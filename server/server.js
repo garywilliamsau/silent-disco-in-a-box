@@ -523,6 +523,21 @@ async function broadcastNowPlaying() {
           filename: '',
         };
       }
+      // Override with Spotify metadata when in Spotify mode
+      if (ch.spotifyMode) {
+        try {
+          const spotifyFile = `/tmp/spotify-${ch.id}.json`;
+          const raw = fs.readFileSync(spotifyFile, 'utf8');
+          const meta = JSON.parse(raw);
+          if (meta.title) {
+            ch.nowPlaying = {
+              title: meta.title,
+              artist: meta.artist || 'Spotify',
+              filename: '',
+            };
+          }
+        } catch { /* no spotify metadata yet */ }
+      }
     }
 
     // Update play history when track changes
