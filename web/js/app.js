@@ -117,6 +117,14 @@ const App = {
     document.getElementById('channelName').style.color = ch.color;
     this.renderChannelDots();
 
+    // Show track data immediately from last known state
+    const data = this.channels.find(c => c.id === channelId);
+    if (data && data.nowPlaying) {
+      document.getElementById('trackTitle').textContent = data.nowPlaying.title || 'Unknown Track';
+      document.getElementById('trackArtist').textContent = data.nowPlaying.artist || '';
+      document.getElementById('listenerCount').textContent = `${data.listeners || 0} listening`;
+    }
+
     MediaSessionManager.setMetadata({ title: ch.name, artist: 'Silent Disco', channelId: ch.id });
     MediaSessionManager.updatePlaybackState(true);
   },
