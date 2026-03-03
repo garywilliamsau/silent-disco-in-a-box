@@ -18,8 +18,19 @@ const CHANNELS = conf.channels.map(c => c.id);
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/api/ws' });
-const talkoverWss = new WebSocketServer({ server, path: '/api/talkover' });
+const wss = new WebSocketServer({ noServer: true });
+const talkoverWss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  const { pathname } = new URL(request.url, `http://${request.headers.host}`);
+  if (pathname === '/api/ws') {
+    wss.handleUpgrade(request, socket, head, (ws) => { wss.emit('connection', ws, request); });
+  } else if (pathname === '/api/talkover') {
+    talkoverWss.handleUpgrade(request, socket, head, (ws) => { talkoverWss.emit('connection', ws, request); });
+  } else {
+    socket.destroy();
+  }
+});
 
 app.use(express.json());
 

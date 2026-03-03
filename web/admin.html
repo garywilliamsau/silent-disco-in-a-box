@@ -35,7 +35,7 @@
       <div class="talkover-row">
         <button id="talkoverBtn" class="btn-talkover"
           onmousedown="Admin.talkoverStart()" onmouseup="Admin.talkoverStop()"
-          ontouchstart="Admin.talkoverStart()" ontouchend="Admin.talkoverStop()">
+          ontouchstart="event.preventDefault(); Admin.talkoverStart()" ontouchend="Admin.talkoverStop()">
           Hold to Talk
         </button>
         <label class="talkover-toggle">

@@ -14,13 +14,14 @@ const Talkover = {
     if (this.ready) return true;
     if (this.pending) return false;
     this.pending = true;
+    console.log('[talkover] setting up mic...');
 
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 },
       });
     } catch (e) {
-      console.error('Mic access denied:', e);
+      console.error('[talkover] Mic access denied:', e);
       this.pending = false;
       return false;
     }
@@ -31,6 +32,7 @@ const Talkover = {
 
     return new Promise((resolve) => {
       this.ws.onopen = () => {
+        console.log('[talkover] WebSocket connected');
         const AC = window.AudioContext || window.webkitAudioContext;
         this.audioCtx = new AC({ sampleRate: 44100 });
         this.source = this.audioCtx.createMediaStreamSource(this.stream);
@@ -53,7 +55,8 @@ const Talkover = {
         resolve(true);
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (e) => {
+        console.log('[talkover] WebSocket closed:', e.code, e.reason);
         this.ready = false;
         this.pending = false;
         resolve(false);
