@@ -9,6 +9,7 @@ const Talkover = {
   active: false,
   ready: false,
   pending: false,
+  recordedChunks: [],
 
   async _setup() {
     if (this.ready) return true;
@@ -39,13 +40,14 @@ const Talkover = {
         this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
 
         this.processor.onaudioprocess = (e) => {
-          if (!this.active || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+          if (!this.active) return;
           const float32 = e.inputBuffer.getChannelData(0);
           const pcm = new Int16Array(float32.length);
           for (let i = 0; i < float32.length; i++) {
             pcm[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32768)));
           }
-          this.ws.send(pcm.buffer);
+          // Buffer the audio instead of sending immediately
+          this.recordedChunks.push(new Uint8Array(pcm.buffer));
         };
 
         this.source.connect(this.processor);
@@ -56,38 +58,59 @@ const Talkover = {
       };
 
       this.ws.onclose = (e) => {
-        console.log('[talkover] WebSocket closed:', e.code, e.reason);
+        console.log('[talkover] WebSocket closed:', e.code);
         this.ready = false;
         this.pending = false;
         resolve(false);
       };
 
-      this.ws.onerror = () => {
-        this.ws.close();
-      };
+      this.ws.onerror = () => { this.ws.close(); };
     });
   },
 
   async start() {
-    this.active = true;
     if (!this.ready) {
       const ok = await this._setup();
-      if (!ok) { this.active = false; return; }
+      if (!ok) return;
     }
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       this.audioCtx.resume();
     }
-    // Tell server to duck music
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send('START');
-    }
+    // Start recording into buffer
+    this.recordedChunks = [];
+    this.active = true;
   },
 
   stop() {
     this.active = false;
-    // Tell server to restore music
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send('STOP');
-    }
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.recordedChunks.length === 0) return;
+
+    const chunks = this.recordedChunks;
+    this.recordedChunks = [];
+
+    // Calculate audio duration: each chunk is 4096 samples at 44100Hz
+    const totalSamples = chunks.length * 4096;
+    const durationMs = Math.round((totalSamples / 44100) * 1000);
+
+    console.log(`[talkover] sending ${chunks.length} chunks (${(durationMs / 1000).toFixed(1)}s)`);
+
+    // Send: DUCK command → wait for buffer to propagate → audio → wait → UNDUCK
+    this.ws.send('START');
+
+    // Send all audio after pre-duck delay
+    setTimeout(() => {
+      for (const chunk of chunks) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(chunk.buffer);
+        }
+      }
+      // Unduck after audio duration + buffer tail
+      setTimeout(() => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send('STOP');
+        }
+      }, durationMs + 8000);
+    }, 2500);
   },
 };

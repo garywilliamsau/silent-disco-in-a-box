@@ -557,16 +557,16 @@ talkoverWss.on('connection', (ws) => {
     if (!talkoverEnabled) return;
 
     // Handle START/STOP control messages for ducking
-    if (typeof data === 'string' || (data instanceof Buffer && data.length < 10)) {
-      const msg = data.toString();
-      if (msg === 'START') {
-        liquidsoap.setTalkoverActive(true).catch(() => {});
-        return;
-      }
-      if (msg === 'STOP') {
-        liquidsoap.setTalkoverActive(false).catch(() => {});
-        return;
-      }
+    const str = (typeof data === 'string') ? data : (data.length <= 10 ? data.toString('utf8') : null);
+    if (str === 'START') {
+      console.log('[talkover] ducking ON');
+      liquidsoap.setTalkoverActive(true).catch(() => {});
+      return;
+    }
+    if (str === 'STOP') {
+      console.log('[talkover] ducking OFF');
+      liquidsoap.setTalkoverActive(false).catch(() => {});
+      return;
     }
 
     if (!(data instanceof Buffer)) return;
