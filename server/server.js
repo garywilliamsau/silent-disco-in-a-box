@@ -552,16 +552,19 @@ async function broadcastNowPlaying() {
       Promise.all(CHANNELS.map(async (ch) => ({
         id: ch,
         nowPlaying: await liquidsoap.getNowPlaying(ch).catch(() => null),
+        alsaMode: await liquidsoap.getAlsaMode(ch).catch(() => false),
         bluetoothMode: await liquidsoap.getBluetoothMode(ch).catch(() => false),
         spotifyMode: await liquidsoap.getSpotifyMode(ch).catch(() => false),
       }))),
       icecast.getChannelStats().catch(() => ({ channels: {} })),
     ]);
 
-    // Override now-playing with BT AVRCP metadata when in Bluetooth mode
+    // Override now-playing based on active source mode
     const btNowPlaying = bluetooth.getNowPlaying();
     for (const ch of channels) {
-      if (ch.bluetoothMode && btNowPlaying) {
+      if (ch.alsaMode) {
+        ch.nowPlaying = { title: 'Line In', artist: 'Live Audio', filename: '' };
+      } else if (ch.bluetoothMode && btNowPlaying) {
         ch.nowPlaying = {
           title: btNowPlaying.title,
           artist: btNowPlaying.artist,
