@@ -1,0 +1,19 @@
+[Unit]
+Description=Silent Disco - Node.js API
+After=network.target liquidsoap-disco.service
+Wants=liquidsoap-disco.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/disco/server
+ExecStart=/usr/bin/node /opt/disco/server/server.js
+Environment=DISCO_CONFIG=/opt/disco/config/disco.conf
+Restart=always
+RestartSec=3s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=disco-api
+
+[Install]
+WantedBy=multi-user.target

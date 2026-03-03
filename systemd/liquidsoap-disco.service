@@ -1,0 +1,21 @@
+[Unit]
+Description=Liquidsoap - Silent Disco streaming
+After=network.target icecast2.service
+Wants=icecast2.service
+
+[Service]
+Type=simple
+User=liquidsoap
+Group=audio
+ExecStartPre=/bin/mkdir -p /var/log/liquidsoap
+ExecStartPre=/bin/chown liquidsoap:liquidsoap /var/log/liquidsoap
+ExecStart=/usr/bin/liquidsoap /etc/liquidsoap/disco.liq
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=liquidsoap-disco
+Nice=-10
+
+[Install]
+WantedBy=multi-user.target
