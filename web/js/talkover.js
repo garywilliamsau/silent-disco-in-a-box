@@ -77,9 +77,17 @@ const Talkover = {
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       this.audioCtx.resume();
     }
+    // Tell server to duck music
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send('START');
+    }
   },
 
   stop() {
     this.active = false;
+    // Tell server to restore music
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send('STOP');
+    }
   },
 };

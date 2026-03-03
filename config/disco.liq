@@ -46,6 +46,24 @@ talkover_input = input.external(
 talkover_stereo = audio_to_stereo(talkover_input)
 talkover_safe = mksafe(talkover_stereo)
 
+# Ducking: when talkover is active, music drops to 30% volume
+talkover_active = ref(false)
+
+server.register(
+  namespace="talkover",
+  description="Set talkover active state for ducking",
+  usage="set_active true|false",
+  "set_active",
+  fun(v) -> begin
+    talkover_active := (v == "true")
+    "OK"
+  end
+)
+
+def duck_volume()
+  if talkover_active() then 0.3 else 1.0 end
+end
+
 # Per-channel Bluetooth toggle (mutually exclusive, managed by API)
 red_use_bt = ref(false)
 green_use_bt = ref(false)
@@ -119,7 +137,7 @@ server.register(
   fun(_) -> if red_use_bt() then "true" else "false" end
 )
 
-red_output = add(normalize=false, [red_safe, amplify(1.5, talkover_safe)])
+red_output = add(normalize=false, [amplify(duck_volume, red_safe), amplify(1.5, talkover_safe)])
 
 output.icecast(
   id="red_icecast",
@@ -203,7 +221,7 @@ server.register(
   fun(_) -> if green_use_bt() then "true" else "false" end
 )
 
-green_output = add(normalize=false, [green_safe, amplify(1.5, talkover_safe)])
+green_output = add(normalize=false, [amplify(duck_volume, green_safe), amplify(1.5, talkover_safe)])
 
 output.icecast(
   id="green_icecast",
@@ -287,7 +305,7 @@ server.register(
   fun(_) -> if blue_use_bt() then "true" else "false" end
 )
 
-blue_output = add(normalize=false, [blue_safe, amplify(1.5, talkover_safe)])
+blue_output = add(normalize=false, [amplify(duck_volume, blue_safe), amplify(1.5, talkover_safe)])
 
 output.icecast(
   id="blue_icecast",

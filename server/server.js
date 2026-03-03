@@ -551,13 +551,27 @@ try {
 
 talkoverWss.on('connection', (ws) => {
   console.log('[talkover] client connected');
+  let hasData = false;
 
   ws.on('message', (data) => {
     if (!talkoverEnabled) return;
+
+    // Handle START/STOP control messages for ducking
+    if (typeof data === 'string' || (data instanceof Buffer && data.length < 10)) {
+      const msg = data.toString();
+      if (msg === 'START') {
+        liquidsoap.setTalkoverActive(true).catch(() => {});
+        return;
+      }
+      if (msg === 'STOP') {
+        liquidsoap.setTalkoverActive(false).catch(() => {});
+        return;
+      }
+    }
+
     if (!(data instanceof Buffer)) return;
 
     // Write raw PCM directly to the FIFO
-    // Opens FIFO non-blocking — if Liquidsoap isn't reading, data is dropped
     try {
       if (!talkoverFifo || talkoverFifo.destroyed) {
         talkoverFifo = fs.createWriteStream(TALKOVER_FIFO, { flags: 'a' });
@@ -569,6 +583,7 @@ talkoverWss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('[talkover] client disconnected');
+    liquidsoap.setTalkoverActive(false).catch(() => {});
   });
 });
 

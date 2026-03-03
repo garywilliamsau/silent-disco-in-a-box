@@ -156,7 +156,11 @@ async function getBluetoothMode(channel) {
   return response === 'true';
 }
 
+async function setTalkoverActive(active) {
+  return client.send(`talkover.set_active ${active ? 'true' : 'false'}`);
+}
+
 module.exports = {
   client, getNowPlaying, skipChannel, setAlsaMode, getAlsaMode,
-  reloadPlaylist, pushTrack, setBluetoothMode, getBluetoothMode,
+  reloadPlaylist, pushTrack, setBluetoothMode, getBluetoothMode, setTalkoverActive,
 };
