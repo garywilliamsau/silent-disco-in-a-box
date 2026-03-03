@@ -30,6 +30,21 @@
 
     <input type="file" id="fileInput" multiple accept=".mp3,.m4a,.ogg,.flac" class="hidden">
 
+    <div class="talkover-controls">
+      <h3>Talkover</h3>
+      <div class="talkover-row">
+        <button id="talkoverBtn" class="btn-talkover"
+          onmousedown="Admin.talkoverStart()" onmouseup="Admin.talkoverStop()"
+          ontouchstart="Admin.talkoverStart()" ontouchend="Admin.talkoverStop()">
+          Hold to Talk
+        </button>
+        <label class="talkover-toggle">
+          <input type="checkbox" id="talkoverEnabledCb" checked onchange="Admin.toggleTalkoverEnabled(this.checked)">
+          Allow listeners
+        </label>
+      </div>
+    </div>
+
     <div class="system-controls">
       <h3>System</h3>
       <button id="restartBtn" class="btn btn-warning">Restart Pi</button>
@@ -37,6 +52,7 @@
     </div>
   </div>
 
-  <script src="/js/admin.js?v=3"></script>
+  <script src="/js/talkover.js?v=1"></script>
+  <script src="/js/admin.js?v=4"></script>
 </body>
 </html>

@@ -263,6 +263,30 @@ html, body {
   transform: scale(0.9);
 }
 
+/* Walkie-talkie button */
+.btn-talk {
+  margin-top: 1rem;
+  padding: 0.6rem 1.5rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50px;
+  background: rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.btn-talk:active {
+  background: rgba(243, 156, 18, 0.8);
+  border-color: #f39c12;
+  color: white;
+  box-shadow: 0 0 20px rgba(243, 156, 18, 0.4);
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }

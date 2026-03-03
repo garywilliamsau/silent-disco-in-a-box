@@ -19,8 +19,13 @@ const CHANNELS = conf.channels.map(c => c.id);
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/api/ws' });
+const talkoverWss = new WebSocketServer({ server, path: '/api/talkover' });
 
 app.use(express.json());
+
+// --- Talkover state ---
+let talkoverEnabled = true; // admin can toggle
+let talkoverFifo = null;
 
 function validChannel(id) {
   return CHANNELS.includes(id);
@@ -411,6 +416,21 @@ app.delete('/api/bluetooth/devices/:mac', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// --- GET /api/talkover/status ---
+app.get('/api/talkover/status', (req, res) => {
+  res.json({ ok: true, enabled: talkoverEnabled });
+});
+
+// --- POST /api/talkover/toggle --- admin toggle for talkover
+app.post('/api/talkover/toggle', requireAdmin, (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ ok: false, error: 'Body must be { "enabled": true|false }' });
+  }
+  talkoverEnabled = enabled;
+  res.json({ ok: true, enabled: talkoverEnabled });
+});
+
 // --- Multer error handler ---
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
@@ -509,6 +529,38 @@ wss.on('connection', (ws) => {
 });
 
 // --- Start ---
+// --- Talkover WebSocket: receives mic audio from phones ---
+const TALKOVER_FIFO = '/tmp/disco-talkover.pcm';
+
+// Create FIFO if needed
+try {
+  const { execSync } = require('child_process');
+  execSync(`[ -p ${TALKOVER_FIFO} ] || mkfifo ${TALKOVER_FIFO}`);
+} catch { /* FIFO might already exist */ }
+
+talkoverWss.on('connection', (ws) => {
+  console.log('[talkover] client connected');
+
+  ws.on('message', (data) => {
+    if (!talkoverEnabled) return;
+    if (!(data instanceof Buffer)) return;
+
+    // Write raw PCM directly to the FIFO
+    // Opens FIFO non-blocking — if Liquidsoap isn't reading, data is dropped
+    try {
+      if (!talkoverFifo || talkoverFifo.destroyed) {
+        talkoverFifo = fs.createWriteStream(TALKOVER_FIFO, { flags: 'a' });
+        talkoverFifo.on('error', () => { talkoverFifo = null; });
+      }
+      talkoverFifo.write(data);
+    } catch { /* drop frame if FIFO not ready */ }
+  });
+
+  ws.on('close', () => {
+    console.log('[talkover] client disconnected');
+  });
+});
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[disco-api] listening on 127.0.0.1:${PORT}`);
 });

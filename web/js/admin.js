@@ -513,6 +513,31 @@ const Admin = {
     } catch (e) { /* Connection drops on shutdown/restart */ }
   },
 
+  talkoverStart() {
+    document.getElementById('talkoverBtn').classList.add('active');
+    Talkover.start();
+  },
+
+  talkoverStop() {
+    document.getElementById('talkoverBtn').classList.remove('active');
+    Talkover.stop();
+  },
+
+  async toggleTalkoverEnabled(enabled) {
+    try {
+      await fetch('/api/talkover/toggle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ enabled }),
+      });
+    } catch (e) {
+      console.error('Talkover toggle failed:', e);
+    }
+  },
+
   escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;

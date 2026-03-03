@@ -32,6 +32,20 @@ bt_input = input.external(
   "/opt/disco/config/bt-capture.sh"
 )
 
+# === TALKOVER (voice broadcast over all channels) ===
+# Reads raw S16LE mono 44100Hz PCM from a named pipe fed by the Node.js server
+talkover_input = input.external(
+  id="talkover",
+  buffer=0.5,
+  channels=1,
+  samplerate=44100,
+  restart_on_error=true,
+  max=5.0,
+  "/opt/disco/config/talkover-capture.sh"
+)
+talkover_stereo = audio_to_stereo(talkover_input)
+talkover_safe = mksafe(talkover_stereo)
+
 # Per-channel Bluetooth toggle (mutually exclusive, managed by API)
 red_use_bt = ref(false)
 green_use_bt = ref(false)
@@ -105,6 +119,8 @@ server.register(
   fun(_) -> if red_use_bt() then "true" else "false" end
 )
 
+red_output = add(normalize=false, [red_safe, amplify(1.5, talkover_safe)])
+
 output.icecast(
   id="red_icecast",
   %mp3(bitrate=128, samplerate=44100, stereo=true, id3v2=true),
@@ -116,7 +132,7 @@ output.icecast(
   description="Silent Disco - Red",
   public=false,
   fallible=false,
-  red_safe
+  red_output
 )
 
 # === CHANNEL: GREEN ===
@@ -187,6 +203,8 @@ server.register(
   fun(_) -> if green_use_bt() then "true" else "false" end
 )
 
+green_output = add(normalize=false, [green_safe, amplify(1.5, talkover_safe)])
+
 output.icecast(
   id="green_icecast",
   %mp3(bitrate=128, samplerate=44100, stereo=true, id3v2=true),
@@ -198,7 +216,7 @@ output.icecast(
   description="Silent Disco - Green",
   public=false,
   fallible=false,
-  green_safe
+  green_output
 )
 
 # === CHANNEL: BLUE ===
@@ -269,6 +287,8 @@ server.register(
   fun(_) -> if blue_use_bt() then "true" else "false" end
 )
 
+blue_output = add(normalize=false, [blue_safe, amplify(1.5, talkover_safe)])
+
 output.icecast(
   id="blue_icecast",
   %mp3(bitrate=128, samplerate=44100, stereo=true, id3v2=true),
@@ -280,5 +300,5 @@ output.icecast(
   description="Silent Disco - Blue",
   public=false,
   fallible=false,
-  blue_safe
+  blue_output
 )
