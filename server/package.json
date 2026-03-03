@@ -1,0 +1,15 @@
+{
+  "name": "silent-disco-api",
+  "version": "1.0.0",
+  "description": "Silent Disco in a Box - Admin API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.18.0",
+    "music-metadata": "^10.6.0"
+  }
+}
