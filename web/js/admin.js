@@ -526,9 +526,22 @@ const Admin = {
 
   startPolling() {
     this.fetchAndUpdate();
+    this.fetchSystemStats();
     this.loadBluetoothStatus();
     setInterval(() => this.fetchAndUpdate(), 3000);
+    setInterval(() => this.fetchSystemStats(), 5000);
     setInterval(() => this.loadBluetoothStatus(), 10000);
+  },
+
+  async fetchSystemStats() {
+    try {
+      const res = await fetch('/api/system');
+      const data = await res.json();
+      if (data.ok) {
+        document.getElementById('piCpu').textContent = `CPU ${data.cpu}%`;
+        document.getElementById('piMem').textContent = `RAM ${data.mem}%`;
+      }
+    } catch { /* ignore */ }
   },
 
   async skip(channelId) {

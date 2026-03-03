@@ -253,6 +253,18 @@ app.get('/api/channels/:id/color.png', (req, res) => {
   res.send(png);
 });
 
+// --- GET /api/system --- CPU + memory usage
+app.get('/api/system', (req, res) => {
+  const os = require('os');
+  const cpus = os.cpus();
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const load = os.loadavg()[0];
+  const cpuPct = Math.round((load / cpus.length) * 100);
+  const memPct = Math.round(((totalMem - freeMem) / totalMem) * 100);
+  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length });
+});
+
 // --- GET /api/stats ---
 app.get('/api/stats', async (req, res) => {
   try {

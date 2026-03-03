@@ -21,6 +21,8 @@
     <header class="admin-header">
       <h1>Silent Disco Admin</h1>
       <div class="header-stats">
+        <span id="piCpu" class="pi-stat">-</span>
+        <span id="piMem" class="pi-stat">-</span>
         <span id="totalListeners">0 listeners</span>
         <span id="lsStatus" class="status-dot"></span>
       </div>
@@ -38,10 +40,6 @@
           ontouchstart="event.preventDefault(); Admin.talkoverStart()" ontouchend="Admin.talkoverStop()">
           Hold to Talk
         </button>
-        <label class="talkover-toggle">
-          <input type="checkbox" id="talkoverEnabledCb" checked onchange="Admin.toggleTalkoverEnabled(this.checked)">
-          Allow listeners
-        </label>
       </div>
     </div>
 
