@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0a0a0f">
   <title>Silent Disco</title>
-  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/main.css?v=2">
 </head>
 <body>
 
@@ -31,15 +31,12 @@
   <!-- Player Screen -->
   <div id="playerScreen" class="screen">
     <canvas id="visualizer" class="visualizer"></canvas>
-    <div class="player-content">
-      <div class="now-playing">
-        <img id="albumArt" class="album-art" src="/assets/default-art.png" alt="">
-        <div class="track-info">
-          <div id="trackTitle" class="track-title">Loading...</div>
-          <div id="trackArtist" class="track-artist"></div>
-        </div>
+    <div id="channelName" class="channel-label"></div>
+    <div class="player-bar">
+      <div class="track-info">
+        <div id="trackTitle" class="track-title">Loading...</div>
+        <div id="trackArtist" class="track-artist"></div>
       </div>
-      <div id="channelName" class="channel-label"></div>
       <div id="listenerCount" class="listener-count"></div>
       <div class="channel-dots" id="channelDots"></div>
     </div>
@@ -49,7 +46,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/audio.js"></script>
   <script src="/js/visualizer.js"></script>
-  <script src="/js/mediasession.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/mediasession.js?v=3"></script>
+  <script src="/js/app.js?v=3"></script>
 </body>
 </html>

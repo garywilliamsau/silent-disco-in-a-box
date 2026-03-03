@@ -142,6 +142,157 @@ body {
 .btn-warning { border-color: orange; color: orange; }
 .btn-danger { border-color: var(--red); color: var(--red); }
 
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  text-align: center;
+  color: var(--dim);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 0.75rem;
+}
+
+.upload-zone:hover { border-color: #444; }
+
+.upload-zone.drag-over {
+  border-color: var(--blue);
+  background: rgba(41, 121, 255, 0.08);
+}
+
+.upload-zone.uploading {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Progress bar */
+.upload-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  display: none;
+}
+
+.upload-progress.active { display: block; }
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--blue);
+  border-radius: 2px;
+  transition: width 0.15s;
+}
+
+/* Track list */
+.track-list {
+  max-height: 250px;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+}
+
+.track-list::-webkit-scrollbar { width: 4px; }
+.track-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.track-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.85rem;
+  gap: 0.5rem;
+}
+
+.track-item:last-child { border-bottom: none; }
+
+.track-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.track-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-artist {
+  font-size: 0.75rem;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-delete {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.track-delete:hover { color: var(--red); background: rgba(255,23,68,0.1); }
+
+.track-list-empty {
+  text-align: center;
+  color: var(--dim);
+  font-size: 0.8rem;
+  padding: 0.75rem 0;
+}
+
+/* Bluetooth button */
+.btn-bt { border-color: #6c5ce7; color: #6c5ce7; }
+.btn-bt.active { background: #6c5ce7; color: white; border-color: #6c5ce7; }
+
+/* Bluetooth panel */
+.bt-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.bt-panel h3 { margin-bottom: 1rem; }
+
+.bt-status {
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+
+.bt-device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.bt-device:last-child { border-bottom: none; }
+
+.bt-device-name {
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+.bt-device-channel select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
 .system-controls {
   background: var(--card);
   border: 1px solid var(--border);

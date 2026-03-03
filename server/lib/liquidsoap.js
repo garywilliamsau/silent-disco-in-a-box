@@ -65,11 +65,12 @@ class LiquidsoapClient {
 
   _processBuffer() {
     while (true) {
-      const endIdx = this._buffer.indexOf('\nEND\n');
-      if (endIdx === -1) break;
+      const endMatch = this._buffer.match(/\r?\nEND\r?\n/);
+      if (!endMatch) break;
 
-      const responseText = this._buffer.slice(0, endIdx);
-      this._buffer = this._buffer.slice(endIdx + 5);
+      const endIdx = endMatch.index;
+      const responseText = this._buffer.slice(0, endIdx).replace(/\r/g, '');
+      this._buffer = this._buffer.slice(endIdx + endMatch[0].length);
 
       if (this._pending.length > 0) {
         const item = this._pending.shift();
@@ -134,4 +135,28 @@ async function getAlsaMode(channel) {
   return response === 'true';
 }
 
-module.exports = { client, getNowPlaying, skipChannel, setAlsaMode, getAlsaMode };
+const PLAYLIST_IDS = { red: 'red_playlist', green: 'green_playlist', blue: 'blue_playlist' };
+
+async function reloadPlaylist(channel) {
+  const playlistId = PLAYLIST_IDS[channel];
+  if (!playlistId) throw new Error(`Unknown channel: ${channel}`);
+  return client.send(`${playlistId}.reload`);
+}
+
+async function pushTrack(channel, filePath) {
+  return client.send(`${channel}_queue.push ${filePath}`);
+}
+
+async function setBluetoothMode(channel, enabled) {
+  return client.send(`${channel}.set_bt ${enabled ? 'true' : 'false'}`);
+}
+
+async function getBluetoothMode(channel) {
+  const response = await client.send(`${channel}.get_bt`);
+  return response === 'true';
+}
+
+module.exports = {
+  client, getNowPlaying, skipChannel, setAlsaMode, getAlsaMode,
+  reloadPlaylist, pushTrack, setBluetoothMode, getBluetoothMode,
+};

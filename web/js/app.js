@@ -109,11 +109,15 @@ const App = {
     Visualizer.setColor(ch.color);
     Visualizer.start();
 
+    // Full channel color screen — visible from across the room
+    document.getElementById('playerScreen').style.backgroundColor = ch.color;
+    document.documentElement.style.setProperty('--channel-color', ch.color);
+
     document.getElementById('channelName').textContent = ch.name;
     document.getElementById('channelName').style.color = ch.color;
     this.renderChannelDots();
 
-    MediaSessionManager.setMetadata({ title: ch.name, artist: 'Silent Disco' });
+    MediaSessionManager.setMetadata({ title: ch.name, artist: 'Silent Disco', channelId: ch.id });
     MediaSessionManager.updatePlaybackState(true);
   },
 
@@ -130,10 +134,12 @@ const App = {
         AudioManager.switchChannel(ch.id);
         this.currentChannel = ch.id;
         Visualizer.setColor(ch.color);
+        document.getElementById('playerScreen').style.backgroundColor = ch.color;
+        document.documentElement.style.setProperty('--channel-color', ch.color);
         document.getElementById('channelName').textContent = ch.name;
         document.getElementById('channelName').style.color = ch.color;
         this.renderChannelDots();
-        MediaSessionManager.setMetadata({ title: ch.name, artist: 'Silent Disco' });
+        MediaSessionManager.setMetadata({ title: ch.name, artist: 'Silent Disco', channelId: ch.id });
       });
       container.appendChild(dot);
     });
@@ -154,18 +160,10 @@ const App = {
           document.getElementById('trackTitle').textContent = np.title || 'Unknown Track';
           document.getElementById('trackArtist').textContent = np.artist || '';
 
-          if (np.filename) {
-            const filename = np.filename.split('/').pop();
-            document.getElementById('albumArt').src =
-              `/api/channels/${this.currentChannel}/album-art/${encodeURIComponent(filename)}`;
-          }
-
           MediaSessionManager.setMetadata({
             title: np.title || 'Unknown Track',
             artist: np.artist || 'Silent Disco',
-            artworkUrl: np.filename
-              ? `/api/channels/${this.currentChannel}/album-art/${encodeURIComponent(np.filename.split('/').pop())}`
-              : null,
+            channelId: this.currentChannel,
           });
         }
         document.getElementById('listenerCount').textContent =

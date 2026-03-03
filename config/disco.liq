@@ -1,7 +1,8 @@
 #!/usr/bin/liquidsoap
 
 # Silent Disco in a Box - Liquidsoap 2.x Configuration
-# 3 channels, each with playlist + dedicated USB audio line-in
+# 3 channels with playlist sources
+# ALSA line-in can be enabled later when USB audio adapters are connected
 
 # Logging
 log.file.set(true)
@@ -18,6 +19,24 @@ settings.server.telnet.port.set(1234)
 settings.frame.audio.samplerate.set(44100)
 settings.frame.audio.channels.set(2)
 
+# === BLUETOOTH AUDIO INPUT ===
+# Captures from PulseAudio A2DP sink via bt-capture.sh
+# Fallible source: unavailable when no BT device is streaming
+bt_input = input.external(
+  id="bt_input",
+  buffer=2.0,
+  channels=2,
+  samplerate=44100,
+  restart_on_error=true,
+  max=10.0,
+  "/opt/disco/config/bt-capture.sh"
+)
+
+# Per-channel Bluetooth toggle (mutually exclusive, managed by API)
+red_use_bt = ref(false)
+green_use_bt = ref(false)
+blue_use_bt = ref(false)
+
 # === CHANNEL: RED ===
 
 red_playlist = playlist(
@@ -27,24 +46,9 @@ red_playlist = playlist(
   "/home/pi/music/red"
 )
 
-red_use_alsa = interactive.bool("red_use_alsa", false)
-
-red_alsa = input.alsa(
-  id="red_alsa",
-  bufferize=true,
-  fallible=true,
-  device="hw:1,0"
-)
-
-red_source = switch(
-  id="red_switch",
-  track_sensitive=false,
-  [
-    ({red_use_alsa()}, red_alsa),
-    ({true}, red_playlist)
-  ]
-)
-
+red_queue = request.queue(id="red_queue")
+red_bt = switch(track_sensitive=false, [(fun() -> red_use_bt(), bt_input)])
+red_source = fallback(track_sensitive=false, [red_bt, red_queue, red_playlist])
 red_safe = mksafe(red_source)
 
 red_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -78,6 +82,29 @@ server.register(
   end
 )
 
+server.register(
+  namespace="red",
+  description="Enable/disable Bluetooth on red channel",
+  usage="set_bt true|false",
+  "set_bt",
+  fun(v) -> begin
+    red_use_bt := (v == "true")
+    if v == "true" then
+      green_use_bt := false
+      blue_use_bt := false
+    end
+    "OK"
+  end
+)
+
+server.register(
+  namespace="red",
+  description="Get Bluetooth status for red channel",
+  usage="get_bt",
+  "get_bt",
+  fun(_) -> if red_use_bt() then "true" else "false" end
+)
+
 output.icecast(
   id="red_icecast",
   %mp3(bitrate=128, samplerate=44100, stereo=true, id3v2=true),
@@ -101,24 +128,9 @@ green_playlist = playlist(
   "/home/pi/music/green"
 )
 
-green_use_alsa = interactive.bool("green_use_alsa", false)
-
-green_alsa = input.alsa(
-  id="green_alsa",
-  bufferize=true,
-  fallible=true,
-  device="hw:2,0"
-)
-
-green_source = switch(
-  id="green_switch",
-  track_sensitive=false,
-  [
-    ({green_use_alsa()}, green_alsa),
-    ({true}, green_playlist)
-  ]
-)
-
+green_queue = request.queue(id="green_queue")
+green_bt = switch(track_sensitive=false, [(fun() -> green_use_bt(), bt_input)])
+green_source = fallback(track_sensitive=false, [green_bt, green_queue, green_playlist])
 green_safe = mksafe(green_source)
 
 green_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -152,6 +164,29 @@ server.register(
   end
 )
 
+server.register(
+  namespace="green",
+  description="Enable/disable Bluetooth on green channel",
+  usage="set_bt true|false",
+  "set_bt",
+  fun(v) -> begin
+    green_use_bt := (v == "true")
+    if v == "true" then
+      red_use_bt := false
+      blue_use_bt := false
+    end
+    "OK"
+  end
+)
+
+server.register(
+  namespace="green",
+  description="Get Bluetooth status for green channel",
+  usage="get_bt",
+  "get_bt",
+  fun(_) -> if green_use_bt() then "true" else "false" end
+)
+
 output.icecast(
   id="green_icecast",
   %mp3(bitrate=128, samplerate=44100, stereo=true, id3v2=true),
@@ -175,24 +210,9 @@ blue_playlist = playlist(
   "/home/pi/music/blue"
 )
 
-blue_use_alsa = interactive.bool("blue_use_alsa", false)
-
-blue_alsa = input.alsa(
-  id="blue_alsa",
-  bufferize=true,
-  fallible=true,
-  device="hw:3,0"
-)
-
-blue_source = switch(
-  id="blue_switch",
-  track_sensitive=false,
-  [
-    ({blue_use_alsa()}, blue_alsa),
-    ({true}, blue_playlist)
-  ]
-)
-
+blue_queue = request.queue(id="blue_queue")
+blue_bt = switch(track_sensitive=false, [(fun() -> blue_use_bt(), bt_input)])
+blue_source = fallback(track_sensitive=false, [blue_bt, blue_queue, blue_playlist])
 blue_safe = mksafe(blue_source)
 
 blue_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -224,6 +244,29 @@ server.register(
     source.skip(blue_safe)
     "Skipped."
   end
+)
+
+server.register(
+  namespace="blue",
+  description="Enable/disable Bluetooth on blue channel",
+  usage="set_bt true|false",
+  "set_bt",
+  fun(v) -> begin
+    blue_use_bt := (v == "true")
+    if v == "true" then
+      red_use_bt := false
+      green_use_bt := false
+    end
+    "OK"
+  end
+)
+
+server.register(
+  namespace="blue",
+  description="Get Bluetooth status for blue channel",
+  usage="get_bt",
+  "get_bt",
+  fun(_) -> if blue_use_bt() then "true" else "false" end
 )
 
 output.icecast(

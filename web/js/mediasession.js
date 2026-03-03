@@ -3,16 +3,17 @@
 const MediaSessionManager = {
   isSupported: 'mediaSession' in navigator,
 
-  setMetadata({ title, artist, artworkUrl }) {
+  setMetadata({ title, artist, channelId }) {
     if (!this.isSupported) return;
+
+    const artwork = channelId
+      ? [{ src: `/api/channels/${channelId}/color.png`, sizes: '64x64', type: 'image/png' }]
+      : [];
 
     navigator.mediaSession.metadata = new MediaMetadata({
       title: title || 'Silent Disco',
       artist: artist || 'Live',
-      artwork: artworkUrl ? [
-        { src: artworkUrl, sizes: '96x96', type: 'image/jpeg' },
-        { src: artworkUrl, sizes: '512x512', type: 'image/jpeg' },
-      ] : [],
+      artwork,
     });
   },
 

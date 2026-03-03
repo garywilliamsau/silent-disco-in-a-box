@@ -38,8 +38,8 @@ const Visualizer = {
       const W = canvas.width;
       const H = canvas.height;
 
-      ctx.fillStyle = 'rgba(10, 10, 15, 0.88)';
-      ctx.fillRect(0, 0, W, H);
+      // Transparent clear so the CSS background color shows through
+      ctx.clearRect(0, 0, W, H);
 
       const barWidth = (W / bufferLength) * 2;
       let x = 0;
@@ -49,13 +49,9 @@ const Visualizer = {
         const barHeight = v * H * 0.8;
         const alpha = 0.3 + v * 0.7;
 
-        ctx.fillStyle = this.channelColor;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
         ctx.globalAlpha = alpha;
         ctx.fillRect(x, H - barHeight, barWidth - 1, barHeight);
-
-        // Subtle mirror from top
-        ctx.globalAlpha = alpha * 0.15;
-        ctx.fillRect(x, 0, barWidth - 1, barHeight * 0.3);
 
         x += barWidth;
       }

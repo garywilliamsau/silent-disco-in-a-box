@@ -9,7 +9,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 INSTALL_DIR="/opt/disco"
 WEB_DIR="/var/www/disco"
-MUSIC_DIR="/home/pi/music"
+
+# Detect the actual user (the one who ran sudo, not root)
+PI_USER="${SUDO_USER:-$(logname 2>/dev/null || echo pi)}"
+PI_HOME="$(eval echo ~"$PI_USER")"
+MUSIC_DIR="$PI_HOME/music"
 
 echo "============================================="
 echo "  Silent Disco in a Box - Installer"
@@ -31,7 +35,10 @@ apt-get install -y -qq \
   dnsmasq \
   icecast2 \
   nginx \
-  git
+  git \
+  bluez \
+  pulseaudio \
+  pulseaudio-module-bluetooth
 
 # Install Liquidsoap from OPAM or package manager
 echo "  Installing Liquidsoap..."
@@ -57,7 +64,9 @@ mkdir -p "$MUSIC_DIR/red" "$MUSIC_DIR/green" "$MUSIC_DIR/blue"
 mkdir -p /var/log/liquidsoap
 mkdir -p /etc/liquidsoap
 
-chown -R pi:pi "$MUSIC_DIR"
+chown -R "$PI_USER:$PI_USER" "$MUSIC_DIR"
+chmod o+rx "$PI_HOME"
+chmod -R o+rX "$MUSIC_DIR"
 chown liquidsoap:liquidsoap /var/log/liquidsoap
 
 echo "[5/10] Copying project files..."
@@ -92,27 +101,169 @@ cp "$INSTALL_DIR/config/nginx-disco.conf" /etc/nginx/sites-available/disco
 ln -sf /etc/nginx/sites-available/disco /etc/nginx/sites-enabled/disco
 rm -f /etc/nginx/sites-enabled/default
 
-# systemd services
+# systemd services (patch username)
 cp "$INSTALL_DIR/systemd/liquidsoap-disco.service" /etc/systemd/system/
 cp "$INSTALL_DIR/systemd/disco-api.service" /etc/systemd/system/
+sed -i "s|User=pi|User=$PI_USER|" /etc/systemd/system/disco-api.service
+
+# Patch Liquidsoap music paths to match actual user home
+sed -i "s|/home/pi/music|$MUSIC_DIR|g" /etc/liquidsoap/disco.liq
+
+# Patch disco.conf music paths
+sed -i "s|/home/pi/music|$MUSIC_DIR|g" "$INSTALL_DIR/config/disco.conf"
 
 echo "[8/10] Configuring network..."
-if ! grep -q "# Silent Disco hotspot" /etc/dhcpcd.conf 2>/dev/null; then
-  cat >> /etc/dhcpcd.conf << 'EOF'
+# Raspberry Pi OS Trixie uses NetworkManager; older versions use dhcpcd
+if command -v nmcli &>/dev/null; then
+  echo "  Detected NetworkManager, configuring static IP..."
+  # Stop NetworkManager from managing wlan0 (hostapd will manage it)
+  nmcli device set wlan0 managed no 2>/dev/null || true
+  # Set static IP on wlan0
+  ip addr flush dev wlan0 2>/dev/null || true
+  ip addr add 192.168.4.1/24 dev wlan0 2>/dev/null || true
+
+  # Create a script to set IP on boot (before hostapd starts)
+  cat > /etc/NetworkManager/dispatcher.d/99-disco-hotspot << 'NMEOF'
+#!/bin/bash
+# Ensure wlan0 has static IP for Silent Disco hotspot
+if [ "$1" = "wlan0" ]; then
+  ip addr flush dev wlan0 2>/dev/null
+  ip addr add 192.168.4.1/24 dev wlan0 2>/dev/null
+fi
+NMEOF
+  chmod +x /etc/NetworkManager/dispatcher.d/99-disco-hotspot
+
+  # Also create a systemd service to set the IP before hostapd starts
+  cat > /etc/systemd/system/disco-network.service << 'SVCEOF'
+[Unit]
+Description=Silent Disco - Configure wlan0 static IP
+Before=hostapd.service dnsmasq.service
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/ip addr flush dev wlan0
+ExecStart=/sbin/ip addr add 192.168.4.1/24 dev wlan0
+ExecStart=/sbin/ip link set wlan0 up
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+  systemctl daemon-reload
+  systemctl enable disco-network
+
+elif [ -f /etc/dhcpcd.conf ]; then
+  echo "  Detected dhcpcd, configuring static IP..."
+  if ! grep -q "# Silent Disco hotspot" /etc/dhcpcd.conf; then
+    cat >> /etc/dhcpcd.conf << 'EOF'
 
 # Silent Disco hotspot
 interface wlan0
     static ip_address=192.168.4.1/24
     nohook wpa_supplicant
 EOF
+  fi
 fi
 
-echo "[9/10] Enabling services..."
+echo "[9/10] Configuring Bluetooth audio..."
+# Make bt-capture.sh executable
+chmod +x "$INSTALL_DIR/config/bt-capture.sh"
+
+# PulseAudio system mode for Bluetooth audio routing
+cat > /etc/pulse/system.pa << 'PAEOF'
+load-module module-native-protocol-unix auth-anonymous=1 socket=/run/pulse/native
+load-module module-bluetooth-policy
+load-module module-bluetooth-discover
+load-module module-always-sink
+PAEOF
+
+mkdir -p /run/pulse
+chmod 755 /run/pulse
+
+cat > /etc/tmpfiles.d/pulse.conf << 'TMPEOF'
+d /run/pulse 0755 pulse pulse -
+TMPEOF
+
+# Add users to pulse-access group
+usermod -aG pulse-access liquidsoap 2>/dev/null || true
+usermod -aG pulse-access "$PI_USER" 2>/dev/null || true
+
+# PulseAudio system service
+cat > /etc/systemd/system/pulseaudio-system.service << 'SVCEOF'
+[Unit]
+Description=PulseAudio System Mode (Bluetooth Audio)
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/pulseaudio --system --disallow-exit --disallow-module-loading=0
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+# Bluetooth auto-pairing agent
+cat > "$INSTALL_DIR/config/bt-agent.sh" << 'AGENTEOF'
+#!/bin/bash
+bluetoothctl << EOF
+power on
+discoverable on
+pairable on
+agent NoInputNoOutput
+default-agent
+EOF
+while true; do
+  bluetoothctl devices Connected 2>/dev/null | while read -r _ MAC _; do
+    bluetoothctl trust "$MAC" 2>/dev/null
+  done
+  sleep 5
+done
+AGENTEOF
+chmod +x "$INSTALL_DIR/config/bt-agent.sh"
+
+cat > /etc/systemd/system/disco-bt-agent.service << 'SVCEOF'
+[Unit]
+Description=Silent Disco Bluetooth Agent
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+ExecStart=/opt/disco/config/bt-agent.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+# Configure BlueZ
+cat > /etc/bluetooth/main.conf << 'BTEOF'
+[General]
+Name = SilentDisco
+Class = 0x200414
+DiscoverableTimeout = 0
+PairableTimeout = 0
+Discoverable = true
+Pairable = true
+
+[Policy]
+AutoEnable=true
+BTEOF
+
+rfkill unblock bluetooth 2>/dev/null || true
+
+echo "[10/11] Enabling services..."
 systemctl unmask hostapd 2>/dev/null || true
 systemctl daemon-reload
-systemctl enable hostapd dnsmasq icecast2 liquidsoap-disco disco-api nginx
+systemctl enable hostapd dnsmasq icecast2 liquidsoap-disco disco-api nginx \
+  bluetooth pulseaudio-system disco-bt-agent
 
-echo "[10/10] Testing Nginx configuration..."
+echo "[11/11] Testing Nginx configuration..."
 nginx -t
 
 echo ""
@@ -131,7 +282,12 @@ echo "    $MUSIC_DIR/red/"
 echo "    $MUSIC_DIR/green/"
 echo "    $MUSIC_DIR/blue/"
 echo ""
-echo "  Copy MP3 files to these folders, then reboot:"
+echo "  Bluetooth:"
+echo "    Device name: SilentDisco"
+echo "    Phones can pair and stream audio"
+echo "    Auto-assigns to Blue > Green > Red"
+echo ""
+echo "  Copy MP3 files to the music folders, then reboot:"
 echo "    sudo reboot"
 echo ""
 echo "============================================="

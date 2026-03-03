@@ -69,4 +69,14 @@ function getAlbumArt(filePath) {
   return null;
 }
 
-module.exports = { readTrackMetadata, scanDirectory, getAlbumArt };
+function invalidateFile(filePath) {
+  metadataCache.delete(filePath);
+}
+
+function invalidateDirectory(dirPath) {
+  for (const key of metadataCache.keys()) {
+    if (key.startsWith(dirPath)) metadataCache.delete(key);
+  }
+}
+
+module.exports = { readTrackMetadata, scanDirectory, getAlbumArt, invalidateFile, invalidateDirectory };

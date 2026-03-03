@@ -2,11 +2,14 @@
 
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 const { WebSocketServer } = require('ws');
 const liquidsoap = require('./lib/liquidsoap');
 const icecast = require('./lib/icecast');
 const metadata = require('./lib/metadata');
+const bluetooth = require('./lib/bluetooth');
 const config = require('./lib/config');
 
 const conf = config.get();
@@ -48,6 +51,7 @@ app.get('/api/channels', async (req, res) => {
         id: ch,
         nowPlaying: await liquidsoap.getNowPlaying(ch).catch(() => null),
         alsaMode: await liquidsoap.getAlsaMode(ch).catch(() => false),
+        bluetoothMode: await liquidsoap.getBluetoothMode(ch).catch(() => false),
       }))),
       icecast.getChannelStats(),
     ]);
@@ -136,7 +140,7 @@ app.get('/api/channels/:id/tracks', async (req, res) => {
 app.get('/api/channels/:id/album-art/:filename', async (req, res) => {
   const { id, filename } = req.params;
   if (!validChannel(id)) return res.status(404).send('Unknown channel');
-  if (filename.includes('..')) return res.status(400).send('Invalid filename');
+  if (filename.includes('/') || filename.includes('\\')) return res.status(400).send('Invalid filename');
 
   const chConf = getChannelConfig(id);
   const filePath = path.join(chConf.music_dir, filename);
@@ -151,6 +155,80 @@ app.get('/api/channels/:id/album-art/:filename', async (req, res) => {
   } else {
     res.redirect('/assets/default-art.png');
   }
+});
+
+// --- GET /api/channels/:id/color.png --- solid colour artwork for lock screen
+const zlib = require('zlib');
+const colorPngCache = {};
+
+function generateColorPng(hex) {
+  if (colorPngCache[hex]) return colorPngCache[hex];
+
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const size = 64;
+
+  // Build raw image data: filter byte + RGB per pixel, per row
+  const raw = Buffer.alloc(size * (1 + size * 3));
+  for (let y = 0; y < size; y++) {
+    const offset = y * (1 + size * 3);
+    raw[offset] = 0; // filter: none
+    for (let x = 0; x < size; x++) {
+      const px = offset + 1 + x * 3;
+      raw[px] = r;
+      raw[px + 1] = g;
+      raw[px + 2] = b;
+    }
+  }
+
+  const compressed = zlib.deflateSync(raw);
+
+  // PNG file structure
+  function crc32(buf) {
+    let c = 0xffffffff;
+    for (let i = 0; i < buf.length; i++) {
+      c = (c >>> 8) ^ crc32Table[(c ^ buf[i]) & 0xff];
+    }
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  const crc32Table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    crc32Table[n] = c;
+  }
+
+  function chunk(type, data) {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const typeData = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(typeData));
+    return Buffer.concat([len, typeData, crc]);
+  }
+
+  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);  // width
+  ihdr.writeUInt32BE(size, 4);  // height
+  ihdr[8] = 8;                  // bit depth
+  ihdr[9] = 2;                  // color type: RGB
+
+  const png = Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', compressed), chunk('IEND', Buffer.alloc(0))]);
+  colorPngCache[hex] = png;
+  return png;
+}
+
+app.get('/api/channels/:id/color.png', (req, res) => {
+  const { id } = req.params;
+  const chConf = getChannelConfig(id);
+  if (!chConf) return res.status(404).send('Unknown channel');
+
+  const png = generateColorPng(chConf.color);
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.send(png);
 });
 
 // --- GET /api/stats ---
@@ -182,6 +260,168 @@ app.post('/api/admin/login', (req, res) => {
   }
 });
 
+// --- Multer setup for file uploads ---
+const upload = multer({
+  storage: multer.diskStorage({
+    destination(req, file, cb) {
+      const chConf = getChannelConfig(req.params.id);
+      if (!chConf) return cb(new Error('Unknown channel'));
+      fs.mkdirSync(chConf.music_dir, { recursive: true });
+      cb(null, chConf.music_dir);
+    },
+    filename(req, file, cb) {
+      // Sanitize: keep original name, replace path separators
+      const safe = file.originalname.replace(/[/\\]/g, '_');
+      cb(null, safe);
+    },
+  }),
+  limits: { fileSize: 50 * 1024 * 1024, files: 20 },
+  fileFilter(req, file, cb) {
+    if (/\.(mp3|m4a|ogg|flac)$/i.test(file.originalname)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio files are allowed (.mp3, .m4a, .ogg, .flac)'));
+    }
+  },
+});
+
+// --- Play history (in-memory, last 10 filenames per channel) ---
+const playHistory = {};
+CHANNELS.forEach(ch => { playHistory[ch] = []; });
+
+// --- POST /api/channels/:id/upload ---
+app.post('/api/channels/:id/upload', requireAdmin, (req, res, next) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+  next();
+}, upload.array('files', 20), async (req, res) => {
+  const { id } = req.params;
+  const chConf = getChannelConfig(id);
+
+  try {
+    metadata.invalidateDirectory(chConf.music_dir);
+    await liquidsoap.reloadPlaylist(id).catch(() => {});
+    const tracks = await metadata.scanDirectory(chConf.music_dir);
+    res.json({ ok: true, channel: id, uploaded: req.files.length, tracks });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- DELETE /api/channels/:id/tracks/:filename ---
+app.delete('/api/channels/:id/tracks/:filename', requireAdmin, async (req, res) => {
+  const { id, filename } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+  if (filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ ok: false, error: 'Invalid filename' });
+  }
+
+  const chConf = getChannelConfig(id);
+  const filePath = path.join(chConf.music_dir, filename);
+
+  try {
+    fs.unlinkSync(filePath);
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+  }
+
+  metadata.invalidateFile(filePath);
+  await liquidsoap.reloadPlaylist(id).catch(() => {});
+  const tracks = await metadata.scanDirectory(chConf.music_dir);
+  res.json({ ok: true, channel: id, tracks });
+});
+
+// --- POST /api/channels/:id/previous ---
+app.post('/api/channels/:id/previous', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+
+  const history = playHistory[id];
+  if (history.length === 0) {
+    return res.status(400).json({ ok: false, error: 'No previous track' });
+  }
+
+  const prevFile = history.pop();
+  try {
+    await liquidsoap.pushTrack(id, prevFile);
+    await new Promise(r => setTimeout(r, 300));
+    const nowPlaying = await liquidsoap.getNowPlaying(id);
+    res.json({ ok: true, channel: id, nowPlaying });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- GET /api/bluetooth/status --- connected BT devices + channel assignments
+app.get('/api/bluetooth/status', requireAdmin, (req, res) => {
+  const status = bluetooth.autoAssign(CHANNELS);
+  res.json({ ok: true, ...status });
+});
+
+// --- POST /api/channels/:id/bluetooth --- enable/disable BT on a channel
+app.post('/api/channels/:id/bluetooth', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ ok: false, error: 'Body must be { "enabled": true|false }' });
+  }
+
+  try {
+    await liquidsoap.setBluetoothMode(id, enabled);
+    res.json({ ok: true, channel: id, bluetoothMode: enabled });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- POST /api/bluetooth/assign --- reassign a BT device to a different channel
+app.post('/api/bluetooth/assign', requireAdmin, async (req, res) => {
+  const { mac, channel } = req.body;
+  if (!mac || !channel) {
+    return res.status(400).json({ ok: false, error: 'Body must be { "mac": "...", "channel": "..." }' });
+  }
+  if (!validChannel(channel)) {
+    return res.status(400).json({ ok: false, error: 'Unknown channel' });
+  }
+
+  const success = bluetooth.assignToChannel(mac, channel);
+  if (!success) {
+    return res.status(404).json({ ok: false, error: 'Device not found' });
+  }
+
+  // Disable BT on all channels, then enable on the assigned one
+  try {
+    for (const ch of CHANNELS) {
+      await liquidsoap.setBluetoothMode(ch, ch === channel).catch(() => {});
+    }
+  } catch { /* best effort */ }
+
+  const status = bluetooth.getStatus();
+  res.json({ ok: true, ...status });
+});
+
+// --- DELETE /api/bluetooth/devices/:mac --- remove a paired device
+app.delete('/api/bluetooth/devices/:mac', requireAdmin, (req, res) => {
+  const { mac } = req.params;
+  bluetooth.removePairedDevice(mac);
+  res.json({ ok: true });
+});
+
+// --- Multer error handler ---
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ ok: false, error: err.message });
+  }
+  if (err && req.path.includes('/upload')) {
+    return res.status(400).json({ ok: false, error: err.message });
+  }
+  next(err);
+});
+
 // --- POST /api/admin/system/:action ---
 app.post('/api/admin/system/:action', requireAdmin, (req, res) => {
   const { action } = req.params;
@@ -206,6 +446,9 @@ app.use('/api', (req, res) => {
 // --- WebSocket: push now-playing updates ---
 const WS_INTERVAL_MS = 3000;
 
+// Track last-known filename per channel for play history
+const lastKnownFile = {};
+
 async function broadcastNowPlaying() {
   if (wss.clients.size === 0) return;
 
@@ -214,9 +457,34 @@ async function broadcastNowPlaying() {
       Promise.all(CHANNELS.map(async (ch) => ({
         id: ch,
         nowPlaying: await liquidsoap.getNowPlaying(ch).catch(() => null),
+        bluetoothMode: await liquidsoap.getBluetoothMode(ch).catch(() => false),
       }))),
       icecast.getChannelStats().catch(() => ({ channels: {} })),
     ]);
+
+    // Override now-playing with BT AVRCP metadata when in Bluetooth mode
+    const btNowPlaying = bluetooth.getNowPlaying();
+    for (const ch of channels) {
+      if (ch.bluetoothMode && btNowPlaying) {
+        ch.nowPlaying = {
+          title: btNowPlaying.title,
+          artist: btNowPlaying.artist,
+          filename: '',
+        };
+      }
+    }
+
+    // Update play history when track changes
+    for (const ch of channels) {
+      const filename = ch.nowPlaying?.filename;
+      if (filename && filename !== lastKnownFile[ch.id]) {
+        if (lastKnownFile[ch.id]) {
+          playHistory[ch.id].push(lastKnownFile[ch.id]);
+          if (playHistory[ch.id].length > 10) playHistory[ch.id].shift();
+        }
+        lastKnownFile[ch.id] = filename;
+      }
+    }
 
     const result = channels.map(ch => ({
       ...ch,
