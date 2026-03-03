@@ -36,7 +36,8 @@ apt-get install -y -qq \
   icecast2 \
   nginx \
   git \
-  bluez
+  bluez \
+  rfkill
 
 # Install Liquidsoap from OPAM or package manager
 echo "  Installing Liquidsoap..."
@@ -114,8 +115,13 @@ echo "[8/10] Configuring network..."
 # Raspberry Pi OS Trixie uses NetworkManager; older versions use dhcpcd
 if command -v nmcli &>/dev/null; then
   echo "  Detected NetworkManager, configuring static IP..."
-  # Stop NetworkManager from managing wlan0 (hostapd will manage it)
+  # Permanently stop NetworkManager from managing wlan0 (hostapd will manage it)
   nmcli device set wlan0 managed no 2>/dev/null || true
+  mkdir -p /etc/NetworkManager/conf.d
+  cat > /etc/NetworkManager/conf.d/99-disco.conf << 'NMCONFEOF'
+[keyfile]
+unmanaged-devices=interface-name:wlan0
+NMCONFEOF
   # Set static IP on wlan0
   ip addr flush dev wlan0 2>/dev/null || true
   ip addr add 192.168.4.1/24 dev wlan0 2>/dev/null || true
@@ -141,9 +147,10 @@ After=network-pre.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+ExecStart=/usr/sbin/rfkill unblock wifi
+ExecStart=/sbin/ip link set wlan0 up
 ExecStart=/sbin/ip addr flush dev wlan0
 ExecStart=/sbin/ip addr add 192.168.4.1/24 dev wlan0
-ExecStart=/sbin/ip link set wlan0 up
 
 [Install]
 WantedBy=multi-user.target
