@@ -7,6 +7,8 @@ const Admin = {
   channelColors: { red: '#ff1744', green: '#00e676', blue: '#2979ff' },
   uploadChannel: null,
   btDevices: [],
+  trackData: {},    // { channelId: [tracks] }
+  trackSort: {},    // { channelId: 'title'|'artist'|'recent' }
 
   init() {
     document.getElementById('loginBtn').addEventListener('click', () => this.login());
@@ -76,6 +78,8 @@ const Admin = {
     container.innerHTML = '';
 
     this.channels.forEach(id => {
+      this.trackSort[id] = this.trackSort[id] || 'title';
+
       const panel = document.createElement('div');
       panel.className = 'channel-panel';
       panel.id = `panel-${id}`;
@@ -90,20 +94,41 @@ const Admin = {
         </div>
         <div class="panel-now-playing" id="np-${id}">Loading...</div>
         <div class="panel-controls">
-          <button class="btn" onclick="Admin.previous('${id}')">Previous</button>
-          <button class="btn btn-primary" onclick="Admin.skip('${id}')">Skip Track</button>
-          <button class="btn" id="alsa-btn-${id}" onclick="Admin.toggleAlsa('${id}')">Line-In</button>
-          <button class="btn btn-bt" id="bt-btn-${id}" onclick="Admin.toggleBluetooth('${id}')">Bluetooth</button>
+          <div class="transport">
+            <button class="transport-btn" onclick="Admin.previous('${id}')" title="Previous">&#x23EE;</button>
+            <button class="transport-btn transport-skip" onclick="Admin.skip('${id}')" title="Skip">&#x23ED;</button>
+          </div>
+          <div class="source-btns">
+            <button class="btn" id="alsa-btn-${id}" onclick="Admin.toggleAlsa('${id}')">Line-In</button>
+            <button class="btn btn-bt" id="bt-btn-${id}" onclick="Admin.toggleBluetooth('${id}')">Bluetooth</button>
+          </div>
         </div>
 
-        <div class="upload-zone" id="upload-zone-${id}">
-          Drop MP3s here or click to browse
-        </div>
-        <div class="upload-progress" id="upload-progress-${id}">
-          <div class="progress-fill" id="progress-fill-${id}"></div>
-        </div>
-        <div class="track-list" id="track-list-${id}">
-          <div class="track-list-empty">Loading tracks...</div>
+        <div class="tracks-section">
+          <div class="tracks-header" onclick="Admin.toggleTracks('${id}')">
+            <span class="tracks-toggle" id="tracks-toggle-${id}">&#x25B6;</span>
+            <span>Tracks</span>
+            <span class="tracks-count" id="tracks-count-${id}"></span>
+          </div>
+          <div class="tracks-body hidden" id="tracks-body-${id}">
+            <div class="tracks-toolbar">
+              <div class="upload-zone" id="upload-zone-${id}">
+                Drop MP3s here or click to browse
+              </div>
+              <div class="upload-progress" id="upload-progress-${id}">
+                <div class="progress-fill" id="progress-fill-${id}"></div>
+              </div>
+              <div class="sort-bar">
+                <span class="sort-label">Sort:</span>
+                <button class="sort-btn active" data-sort="title" onclick="Admin.setSort('${id}', 'title', this)">Title</button>
+                <button class="sort-btn" data-sort="artist" onclick="Admin.setSort('${id}', 'artist', this)">Artist</button>
+                <button class="sort-btn" data-sort="recent" onclick="Admin.setSort('${id}', 'recent', this)">Recent</button>
+              </div>
+            </div>
+            <div class="track-list" id="track-list-${id}">
+              <div class="track-list-empty">Loading tracks...</div>
+            </div>
+          </div>
         </div>
       `;
 
@@ -113,6 +138,37 @@ const Admin = {
     });
 
     this.loadBluetoothStatus();
+  },
+
+  toggleTracks(id) {
+    const body = document.getElementById(`tracks-body-${id}`);
+    const toggle = document.getElementById(`tracks-toggle-${id}`);
+    body.classList.toggle('hidden');
+    toggle.innerHTML = body.classList.contains('hidden') ? '&#x25B6;' : '&#x25BC;';
+  },
+
+  setSort(id, sort, btn) {
+    this.trackSort[id] = sort;
+    // Update active button
+    const bar = btn.parentElement;
+    bar.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // Re-render with current data
+    if (this.trackData[id]) {
+      this.renderTracks(id, this.trackData[id]);
+    }
+  },
+
+  sortTracks(tracks, sort) {
+    const sorted = [...tracks];
+    if (sort === 'title') {
+      sorted.sort((a, b) => (a.title || a.filename).localeCompare(b.title || b.filename));
+    } else if (sort === 'artist') {
+      sorted.sort((a, b) => (a.artist || '').localeCompare(b.artist || '') || (a.title || a.filename).localeCompare(b.title || b.filename));
+    } else if (sort === 'recent') {
+      sorted.reverse();
+    }
+    return sorted;
   },
 
   setupUploadZone(id) {
@@ -176,9 +232,10 @@ const Admin = {
         try {
           const data = JSON.parse(xhr.responseText);
           if (data.ok) {
+            this.trackData[id] = data.tracks;
             this.renderTracks(id, data.tracks);
           }
-        } catch (e) { /* ignore parse error */ }
+        } catch (e) { /* ignore */ }
       } else {
         zone.textContent = 'Upload failed — try again';
         setTimeout(() => { zone.textContent = 'Drop MP3s here or click to browse'; }, 2000);
@@ -202,6 +259,7 @@ const Admin = {
       });
       const data = await res.json();
       if (data.ok) {
+        this.trackData[id] = data.tracks;
         this.renderTracks(id, data.tracks);
       }
     } catch (e) {
@@ -211,12 +269,17 @@ const Admin = {
 
   renderTracks(id, tracks) {
     const container = document.getElementById(`track-list-${id}`);
+    const countEl = document.getElementById(`tracks-count-${id}`);
+    if (countEl) countEl.textContent = tracks ? `(${tracks.length})` : '';
+
     if (!tracks || tracks.length === 0) {
       container.innerHTML = '<div class="track-list-empty">No tracks — upload some music</div>';
       return;
     }
 
-    container.innerHTML = tracks.map(t => `
+    const sorted = this.sortTracks(tracks, this.trackSort[id] || 'title');
+
+    container.innerHTML = sorted.map(t => `
       <div class="track-item">
         <div class="track-meta">
           <div class="track-name">${this.escapeHtml(t.title || t.filename)}</div>
@@ -237,6 +300,7 @@ const Admin = {
       });
       const data = await res.json();
       if (data.ok) {
+        this.trackData[id] = data.tracks;
         this.renderTracks(id, data.tracks);
       }
     } catch (e) {
@@ -292,9 +356,7 @@ const Admin = {
         this.btDevices = data.devices || [];
         this.renderBluetoothPanel();
       }
-    } catch (e) {
-      // Bluetooth might not be available
-    }
+    } catch (e) { /* Bluetooth might not be available */ }
   },
 
   renderBluetoothPanel() {
