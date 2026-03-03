@@ -68,6 +68,7 @@ app.get('/api/channels', async (req, res) => {
         nowPlaying: await liquidsoap.getNowPlaying(ch).catch(() => null),
         alsaMode: await liquidsoap.getAlsaMode(ch).catch(() => false),
         bluetoothMode: await liquidsoap.getBluetoothMode(ch).catch(() => false),
+        spotifyMode: await liquidsoap.getSpotifyMode(ch).catch(() => false),
       }))),
       icecast.getChannelStats(),
     ]);
@@ -376,6 +377,24 @@ app.get('/api/bluetooth/status', requireAdmin, (req, res) => {
   res.json({ ok: true, ...status });
 });
 
+// --- POST /api/channels/:id/spotify --- enable/disable Spotify on a channel
+app.post('/api/channels/:id/spotify', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ ok: false, error: 'Body must be { "enabled": true|false }' });
+  }
+
+  try {
+    await liquidsoap.setSpotifyMode(id, enabled);
+    res.json({ ok: true, channel: id, spotifyMode: enabled });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // --- POST /api/channels/:id/bluetooth --- enable/disable BT on a channel
 app.post('/api/channels/:id/bluetooth', requireAdmin, async (req, res) => {
   const { id } = req.params;
@@ -489,6 +508,7 @@ async function broadcastNowPlaying() {
         id: ch,
         nowPlaying: await liquidsoap.getNowPlaying(ch).catch(() => null),
         bluetoothMode: await liquidsoap.getBluetoothMode(ch).catch(() => false),
+        spotifyMode: await liquidsoap.getSpotifyMode(ch).catch(() => false),
       }))),
       icecast.getChannelStats().catch(() => ({ channels: {} })),
     ]);

@@ -156,11 +156,21 @@ async function getBluetoothMode(channel) {
   return response === 'true';
 }
 
+async function setSpotifyMode(channel, enabled) {
+  return client.send(`${channel}.set_spotify ${enabled ? 'true' : 'false'}`);
+}
+
+async function getSpotifyMode(channel) {
+  const response = await client.send(`${channel}.get_spotify`);
+  return response === 'true';
+}
+
 async function setTalkoverActive(active) {
   return client.send(`talkover.set_active ${active ? 'true' : 'false'}`);
 }
 
 module.exports = {
   client, getNowPlaying, skipChannel, setAlsaMode, getAlsaMode,
-  reloadPlaylist, pushTrack, setBluetoothMode, getBluetoothMode, setTalkoverActive,
+  reloadPlaylist, pushTrack, setBluetoothMode, getBluetoothMode,
+  setSpotifyMode, getSpotifyMode, setTalkoverActive,
 };

@@ -101,6 +101,7 @@ const Admin = {
           <div class="source-btns">
             <button class="btn" id="alsa-btn-${id}" onclick="Admin.toggleAlsa('${id}')">Line-In</button>
             <button class="btn btn-bt" id="bt-btn-${id}" onclick="Admin.toggleBluetooth('${id}')">Bluetooth</button>
+            <button class="btn btn-spotify" id="spotify-btn-${id}" onclick="Admin.toggleSpotify('${id}')">Spotify</button>
           </div>
         </div>
 
@@ -325,6 +326,27 @@ const Admin = {
     }
   },
 
+  // --- Spotify ---
+
+  async toggleSpotify(channelId) {
+    const btn = document.getElementById(`spotify-btn-${channelId}`);
+    const currentlySpotify = btn.classList.contains('active');
+
+    try {
+      await fetch(`/api/channels/${channelId}/spotify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ enabled: !currentlySpotify }),
+      });
+      setTimeout(() => this.fetchAndUpdate(), 500);
+    } catch (e) {
+      console.error('Spotify toggle failed:', e);
+    }
+  },
+
   // --- Bluetooth ---
 
   async toggleBluetooth(channelId) {
@@ -429,6 +451,7 @@ const Admin = {
           const lisEl = document.getElementById(`listeners-${ch.id}`);
           const alsaBtn = document.getElementById(`alsa-btn-${ch.id}`);
           const btBtn = document.getElementById(`bt-btn-${ch.id}`);
+          const spotifyBtn = document.getElementById(`spotify-btn-${ch.id}`);
 
           if (npEl && ch.nowPlaying) {
             npEl.innerHTML = `<strong>${ch.nowPlaying.title || 'Unknown'}</strong> - ${ch.nowPlaying.artist || ''}`;
@@ -444,6 +467,15 @@ const Admin = {
             } else {
               btBtn.classList.remove('active');
               btBtn.textContent = 'Bluetooth';
+            }
+          }
+          if (spotifyBtn) {
+            if (ch.spotifyMode) {
+              spotifyBtn.classList.add('active');
+              spotifyBtn.textContent = 'Spotify Active';
+            } else {
+              spotifyBtn.classList.remove('active');
+              spotifyBtn.textContent = 'Spotify';
             }
           }
         });

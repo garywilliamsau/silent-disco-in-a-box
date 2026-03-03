@@ -175,6 +175,10 @@ body {
 .btn-bt { border-color: #6c5ce7; color: #6c5ce7; }
 .btn-bt.active { background: #6c5ce7; color: white; border-color: #6c5ce7; }
 
+/* Spotify button */
+.btn-spotify { border-color: #1db954; color: #1db954; }
+.btn-spotify.active { background: #1db954; color: white; border-color: #1db954; }
+
 /* Collapsible tracks section */
 .tracks-section {
   border-top: 1px solid var(--border);
