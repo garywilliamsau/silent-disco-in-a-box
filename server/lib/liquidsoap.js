@@ -127,11 +127,11 @@ async function skipChannel(channel) {
 }
 
 async function setAlsaMode(channel, enabled) {
-  return client.send(`var.set ${channel}_use_alsa = ${enabled ? 'true' : 'false'}`);
+  return client.send(`${channel}.set_alsa ${enabled ? 'true' : 'false'}`);
 }
 
 async function getAlsaMode(channel) {
-  const response = await client.send(`var.get ${channel}_use_alsa`);
+  const response = await client.send(`${channel}.get_alsa`);
   return response === 'true';
 }
 

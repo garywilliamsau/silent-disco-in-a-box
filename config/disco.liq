@@ -19,6 +19,44 @@ settings.server.telnet.port.set(1234)
 settings.frame.audio.samplerate.set(44100)
 settings.frame.audio.channels.set(2)
 
+# === LINE-IN AUDIO INPUTS (USB audio adapters) ===
+# Red=card 3, Green=card 4, Blue=card 5
+# Card numbers depend on USB port — check with 'arecord -l'
+linein_red = input.external(
+  id="linein_red",
+  buffer=1.0,
+  channels=1,
+  samplerate=44100,
+  restart_on_error=true,
+  max=5.0,
+  "/opt/disco/config/linein-capture.sh 3"
+)
+
+linein_green = input.external(
+  id="linein_green",
+  buffer=1.0,
+  channels=1,
+  samplerate=44100,
+  restart_on_error=true,
+  max=5.0,
+  "/opt/disco/config/linein-capture.sh 4"
+)
+
+linein_blue = input.external(
+  id="linein_blue",
+  buffer=1.0,
+  channels=1,
+  samplerate=44100,
+  restart_on_error=true,
+  max=5.0,
+  "/opt/disco/config/linein-capture.sh 5"
+)
+
+# Per-channel Line-In toggle
+red_use_alsa = ref(false)
+green_use_alsa = ref(false)
+blue_use_alsa = ref(false)
+
 # === BLUETOOTH AUDIO INPUT ===
 # Captures from PulseAudio A2DP sink via bt-capture.sh
 # Fallible source: unavailable when no BT device is streaming
@@ -117,9 +155,10 @@ red_playlist = playlist(
 )
 
 red_queue = request.queue(id="red_queue")
+red_linein = switch(track_sensitive=false, [(fun() -> red_use_alsa(), audio_to_stereo(linein_red))])
 red_bt = switch(track_sensitive=false, [(fun() -> red_use_bt(), bt_input)])
 red_spotify = switch(track_sensitive=false, [(fun() -> red_use_spotify(), spotify_red)])
-red_source = fallback(track_sensitive=false, [red_bt, red_spotify, red_queue, red_playlist])
+red_source = fallback(track_sensitive=false, [red_linein, red_bt, red_spotify, red_queue, red_playlist])
 red_safe = mksafe(red_source)
 
 red_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -151,6 +190,25 @@ server.register(
     source.skip(red_safe)
     "Skipped."
   end
+)
+
+server.register(
+  namespace="red",
+  description="Enable/disable Line-In on red channel",
+  usage="set_alsa true|false",
+  "set_alsa",
+  fun(v) -> begin
+    red_use_alsa := (v == "true")
+    "OK"
+  end
+)
+
+server.register(
+  namespace="red",
+  description="Get Line-In status for red channel",
+  usage="get_alsa",
+  "get_alsa",
+  fun(_) -> if red_use_alsa() then "true" else "false" end
 )
 
 server.register(
@@ -221,9 +279,10 @@ green_playlist = playlist(
 )
 
 green_queue = request.queue(id="green_queue")
+green_linein = switch(track_sensitive=false, [(fun() -> green_use_alsa(), audio_to_stereo(linein_green))])
 green_bt = switch(track_sensitive=false, [(fun() -> green_use_bt(), bt_input)])
 green_spotify = switch(track_sensitive=false, [(fun() -> green_use_spotify(), spotify_green)])
-green_source = fallback(track_sensitive=false, [green_bt, green_spotify, green_queue, green_playlist])
+green_source = fallback(track_sensitive=false, [green_linein, green_bt, green_spotify, green_queue, green_playlist])
 green_safe = mksafe(green_source)
 
 green_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -255,6 +314,25 @@ server.register(
     source.skip(green_safe)
     "Skipped."
   end
+)
+
+server.register(
+  namespace="green",
+  description="Enable/disable Line-In on green channel",
+  usage="set_alsa true|false",
+  "set_alsa",
+  fun(v) -> begin
+    green_use_alsa := (v == "true")
+    "OK"
+  end
+)
+
+server.register(
+  namespace="green",
+  description="Get Line-In status for green channel",
+  usage="get_alsa",
+  "get_alsa",
+  fun(_) -> if green_use_alsa() then "true" else "false" end
 )
 
 server.register(
@@ -325,9 +403,10 @@ blue_playlist = playlist(
 )
 
 blue_queue = request.queue(id="blue_queue")
+blue_linein = switch(track_sensitive=false, [(fun() -> blue_use_alsa(), audio_to_stereo(linein_blue))])
 blue_bt = switch(track_sensitive=false, [(fun() -> blue_use_bt(), bt_input)])
 blue_spotify = switch(track_sensitive=false, [(fun() -> blue_use_spotify(), spotify_blue)])
-blue_source = fallback(track_sensitive=false, [blue_bt, blue_spotify, blue_queue, blue_playlist])
+blue_source = fallback(track_sensitive=false, [blue_linein, blue_bt, blue_spotify, blue_queue, blue_playlist])
 blue_safe = mksafe(blue_source)
 
 blue_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -359,6 +438,25 @@ server.register(
     source.skip(blue_safe)
     "Skipped."
   end
+)
+
+server.register(
+  namespace="blue",
+  description="Enable/disable Line-In on blue channel",
+  usage="set_alsa true|false",
+  "set_alsa",
+  fun(v) -> begin
+    blue_use_alsa := (v == "true")
+    "OK"
+  end
+)
+
+server.register(
+  namespace="blue",
+  description="Get Line-In status for blue channel",
+  usage="get_alsa",
+  "get_alsa",
+  fun(_) -> if blue_use_alsa() then "true" else "false" end
 )
 
 server.register(
