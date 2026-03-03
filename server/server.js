@@ -11,6 +11,7 @@ const icecast = require('./lib/icecast');
 const metadata = require('./lib/metadata');
 const bluetooth = require('./lib/bluetooth');
 const EnergyAnalyser = require('./lib/energy');
+const playlist = require('./lib/playlist');
 const config = require('./lib/config');
 
 const conf = config.get();
@@ -148,7 +149,10 @@ app.get('/api/channels/:id/tracks', async (req, res) => {
   const chConf = getChannelConfig(id);
   try {
     const tracks = await metadata.scanDirectory(chConf.music_dir);
-    res.json({ ok: true, channel: id, tracks });
+    // Return in playlist order
+    const order = playlist.getOrderedFiles(chConf.music_dir);
+    const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+    res.json({ ok: true, channel: id, tracks: ordered });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -318,9 +322,12 @@ app.post('/api/channels/:id/upload', requireAdmin, (req, res, next) => {
 
   try {
     metadata.invalidateDirectory(chConf.music_dir);
+    playlist.ensureM3u(chConf.music_dir);
     await liquidsoap.reloadPlaylist(id).catch(() => {});
     const tracks = await metadata.scanDirectory(chConf.music_dir);
-    res.json({ ok: true, channel: id, uploaded: req.files.length, tracks });
+    const order = playlist.getOrderedFiles(chConf.music_dir);
+    const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+    res.json({ ok: true, channel: id, uploaded: req.files.length, tracks: ordered });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -346,9 +353,34 @@ app.delete('/api/channels/:id/tracks/:filename', requireAdmin, async (req, res) 
   }
 
   metadata.invalidateFile(filePath);
+  playlist.ensureM3u(chConf.music_dir);
   await liquidsoap.reloadPlaylist(id).catch(() => {});
   const tracks = await metadata.scanDirectory(chConf.music_dir);
-  res.json({ ok: true, channel: id, tracks });
+  const order = playlist.getOrderedFiles(chConf.music_dir);
+  const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+  res.json({ ok: true, channel: id, tracks: ordered });
+});
+
+// --- POST /api/channels/:id/tracks/move --- reorder a track up or down
+app.post('/api/channels/:id/tracks/move', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+
+  const { filename, direction } = req.body;
+  if (!filename || !['up', 'down'].includes(direction)) {
+    return res.status(400).json({ ok: false, error: 'Body must be { "filename": "...", "direction": "up"|"down" }' });
+  }
+
+  const chConf = getChannelConfig(id);
+  playlist.moveTrack(chConf.music_dir, filename, direction);
+  await liquidsoap.reloadPlaylist(id).catch(() => {});
+  const tracks = await metadata.scanDirectory(chConf.music_dir);
+
+  // Return tracks in playlist order
+  const order = playlist.getOrderedFiles(chConf.music_dir);
+  const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+
+  res.json({ ok: true, channel: id, tracks: ordered });
 });
 
 // --- POST /api/channels/:id/previous ---
@@ -636,6 +668,12 @@ talkoverWss.on('connection', (ws) => {
     console.log('[talkover] client disconnected');
     liquidsoap.setTalkoverActive(false).catch(() => {});
   });
+});
+
+// Generate M3U playlists on startup so Liquidsoap has files to read
+conf.channels.forEach(ch => {
+  playlist.ensureM3u(ch.music_dir);
+  console.log(`[playlist] ${ch.id}: ${playlist.getOrderedFiles(ch.music_dir).length} tracks`);
 });
 
 server.listen(PORT, '127.0.0.1', () => {

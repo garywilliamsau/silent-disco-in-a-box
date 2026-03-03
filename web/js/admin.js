@@ -78,7 +78,7 @@ const Admin = {
     container.innerHTML = '';
 
     this.channels.forEach(id => {
-      this.trackSort[id] = this.trackSort[id] || 'title';
+      this.trackSort[id] = this.trackSort[id] || 'order';
 
       const panel = document.createElement('div');
       panel.className = 'channel-panel';
@@ -121,9 +121,9 @@ const Admin = {
               </div>
               <div class="sort-bar">
                 <span class="sort-label">Sort:</span>
-                <button class="sort-btn active" data-sort="title" onclick="Admin.setSort('${id}', 'title', this)">Title</button>
+                <button class="sort-btn active" data-sort="order" onclick="Admin.setSort('${id}', 'order', this)">Play Order</button>
+                <button class="sort-btn" data-sort="title" onclick="Admin.setSort('${id}', 'title', this)">Title</button>
                 <button class="sort-btn" data-sort="artist" onclick="Admin.setSort('${id}', 'artist', this)">Artist</button>
-                <button class="sort-btn" data-sort="recent" onclick="Admin.setSort('${id}', 'recent', this)">Recent</button>
               </div>
             </div>
             <div class="track-list" id="track-list-${id}">
@@ -278,10 +278,16 @@ const Admin = {
       return;
     }
 
-    const sorted = this.sortTracks(tracks, this.trackSort[id] || 'title');
+    const sort = this.trackSort[id] || 'order';
+    const sorted = sort === 'order' ? tracks : this.sortTracks(tracks, sort);
+    const showOrder = sort === 'order';
 
-    container.innerHTML = sorted.map(t => `
+    container.innerHTML = sorted.map((t, i) => `
       <div class="track-item">
+        ${showOrder ? `<div class="track-order-btns">
+          <button class="track-move" onclick="Admin.moveTrack('${id}', '${this.escapeAttr(t.filename)}', 'up')" ${i === 0 ? 'disabled' : ''}>&#x25B2;</button>
+          <button class="track-move" onclick="Admin.moveTrack('${id}', '${this.escapeAttr(t.filename)}', 'down')" ${i === sorted.length - 1 ? 'disabled' : ''}>&#x25BC;</button>
+        </div>` : ''}
         <div class="track-meta">
           <div class="track-name">${this.escapeHtml(t.title || t.filename)}</div>
           <div class="track-artist">${this.escapeHtml(t.artist || '')}</div>
@@ -289,6 +295,26 @@ const Admin = {
         <button class="track-delete" onclick="Admin.deleteTrack('${id}', '${this.escapeAttr(t.filename)}')" title="Delete">&#x2715;</button>
       </div>
     `).join('');
+  },
+
+  async moveTrack(id, filename, direction) {
+    try {
+      const res = await fetch(`/api/channels/${id}/tracks/move`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ filename, direction }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.trackData[id] = data.tracks;
+        this.renderTracks(id, data.tracks);
+      }
+    } catch (e) {
+      console.error('Move failed:', e);
+    }
   },
 
   async deleteTrack(id, filename) {

@@ -111,9 +111,9 @@ blue_use_bt = ref(false)
 
 red_playlist = playlist(
   id="red_playlist",
-  mode="randomize",
-  reload=3600,
-  "/home/pi/music/red"
+  mode="normal",
+  reload_mode="watch",
+  "/home/pi/music/red/playlist.m3u"
 )
 
 red_queue = request.queue(id="red_queue")
@@ -215,9 +215,9 @@ output.icecast(
 
 green_playlist = playlist(
   id="green_playlist",
-  mode="randomize",
-  reload=3600,
-  "/home/pi/music/green"
+  mode="normal",
+  reload_mode="watch",
+  "/home/pi/music/green/playlist.m3u"
 )
 
 green_queue = request.queue(id="green_queue")
@@ -319,9 +319,9 @@ output.icecast(
 
 blue_playlist = playlist(
   id="blue_playlist",
-  mode="randomize",
-  reload=3600,
-  "/home/pi/music/blue"
+  mode="normal",
+  reload_mode="watch",
+  "/home/pi/music/blue/playlist.m3u"
 )
 
 blue_queue = request.queue(id="blue_queue")

@@ -326,6 +326,27 @@ body {
   text-overflow: ellipsis;
 }
 
+.track-order-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.track-move {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 0.6rem;
+  padding: 0.1rem 0.3rem;
+  line-height: 1;
+}
+
+.track-move:hover:not(:disabled) { color: var(--text); background: rgba(255,255,255,0.05); }
+.track-move:disabled { opacity: 0.2; cursor: default; }
+
 .track-delete {
   background: none;
   border: none;
