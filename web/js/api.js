@@ -3,6 +3,7 @@
 const DiscoAPI = {
   ws: null,
   listeners: [],
+  energyListeners: [],
 
   async getConfig() {
     const res = await fetch('/api/config');
@@ -18,6 +19,10 @@ const DiscoAPI = {
     this.listeners.push(callback);
   },
 
+  onEnergy(callback) {
+    this.energyListeners.push(callback);
+  },
+
   connectWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     this.ws = new WebSocket(`${protocol}//${location.host}/api/ws`);
@@ -26,6 +31,8 @@ const DiscoAPI = {
       const data = JSON.parse(event.data);
       if (data.type === 'update') {
         this.listeners.forEach(cb => cb(data.channels));
+      } else if (data.type === 'energy') {
+        this.energyListeners.forEach(cb => cb(data.energy));
       }
     };
 

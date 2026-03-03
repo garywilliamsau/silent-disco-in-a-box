@@ -10,6 +10,7 @@ const liquidsoap = require('./lib/liquidsoap');
 const icecast = require('./lib/icecast');
 const metadata = require('./lib/metadata');
 const bluetooth = require('./lib/bluetooth');
+const EnergyAnalyser = require('./lib/energy');
 const config = require('./lib/config');
 
 const conf = config.get();
@@ -573,6 +574,21 @@ wss.on('connection', (ws) => {
   broadcastNowPlaying();
   ws.on('close', () => console.log('[ws] client disconnected'));
 });
+
+// --- Energy analyser: real-time beat data for listener visualizer ---
+const energyAnalyser = new EnergyAnalyser(CHANNELS, (energy) => {
+  if (wss.clients.size === 0) return;
+  const msg = JSON.stringify({ type: 'energy', energy });
+  for (const ws of wss.clients) {
+    if (ws.readyState === ws.OPEN) ws.send(msg);
+  }
+});
+
+// Start after a delay to let Icecast streams come up
+setTimeout(() => {
+  energyAnalyser.start();
+  console.log('[energy] analyser started');
+}, 10000);
 
 // --- Start ---
 // --- Talkover WebSocket: receives mic audio from phones ---

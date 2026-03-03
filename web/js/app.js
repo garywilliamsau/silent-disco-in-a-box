@@ -107,6 +107,7 @@ const App = {
 
     Visualizer.init(document.getElementById('visualizer'));
     Visualizer.setColor(ch.color);
+    Visualizer.setChannel(ch.id);
     Visualizer.start();
 
     // Full channel color screen — visible from across the room
@@ -142,6 +143,7 @@ const App = {
         AudioManager.switchChannel(ch.id);
         this.currentChannel = ch.id;
         Visualizer.setColor(ch.color);
+        Visualizer.setChannel(ch.id);
         document.getElementById('playerScreen').style.backgroundColor = ch.color;
         document.documentElement.style.setProperty('--channel-color', ch.color);
         document.getElementById('channelName').textContent = ch.name;

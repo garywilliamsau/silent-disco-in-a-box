@@ -6,15 +6,22 @@ const Visualizer = {
   animationId: null,
   channelColor: '#ffffff',
   r: 255, g: 255, b: 255,
-  energy: 0,
-  hasAnalyserData: false,
-  pulsePhase: 0,
+  serverEnergy: 0,
+  smoothEnergy: 0,
+  channelId: null,
 
   init(canvasEl) {
     this.canvas = canvasEl;
     this.ctx = canvasEl.getContext('2d');
     this.resize();
     window.addEventListener('resize', () => this.resize());
+
+    // Listen for server-side energy updates
+    DiscoAPI.onEnergy((energy) => {
+      if (this.channelId && energy[this.channelId] !== undefined) {
+        this.serverEnergy = energy[this.channelId];
+      }
+    });
   },
 
   resize() {
@@ -29,14 +36,13 @@ const Visualizer = {
     this.b = parseInt(color.slice(5, 7), 16);
   },
 
+  setChannel(channelId) {
+    this.channelId = channelId;
+  },
+
   start() {
-    const analyser = AudioManager.getAnalyser();
-    const hasAnalyser = !!analyser;
-    const bufferLength = hasAnalyser ? analyser.frequencyBinCount : 0;
-    const dataArray = hasAnalyser ? new Uint8Array(bufferLength) : null;
     const ctx = this.ctx;
     const canvas = this.canvas;
-    let checkFrames = 0;
 
     const draw = () => {
       this.animationId = requestAnimationFrame(draw);
@@ -44,39 +50,12 @@ const Visualizer = {
       const W = canvas.width;
       const H = canvas.height;
 
-      let bass = 0;
-      let total = 0;
+      // Smooth the server energy for natural feel
+      this.smoothEnergy += (this.serverEnergy - this.smoothEnergy) * 0.25;
+      const energy = this.smoothEnergy;
 
-      if (hasAnalyser) {
-        analyser.getByteFrequencyData(dataArray);
-
-        // Check if analyser is returning real data (first 30 frames)
-        if (checkFrames < 30) {
-          checkFrames++;
-          let sum = 0;
-          for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
-          if (sum > 0) this.hasAnalyserData = true;
-        }
-
-        if (this.hasAnalyserData) {
-          for (let i = 0; i < 16; i++) bass += dataArray[i];
-          bass = bass / (16 * 255);
-          for (let i = 0; i < bufferLength; i++) total += dataArray[i];
-          total = total / (bufferLength * 255);
-        }
-      }
-
-      // Fallback: gentle CSS-style pulse when no analyser data
-      if (!this.hasAnalyserData) {
-        this.pulsePhase += 0.02;
-        bass = 0.3 + Math.sin(this.pulsePhase) * 0.15 + Math.sin(this.pulsePhase * 2.7) * 0.08;
-        total = 0.25 + Math.sin(this.pulsePhase * 0.8) * 0.1;
-      }
-
-      this.energy += (total - this.energy) * 0.15;
-
-      // Dynamic brightness
-      const brightness = 0.6 + bass * 0.4;
+      // Dynamic brightness: base 0.55, pulses up to 1.0 with energy
+      const brightness = 0.55 + energy * 0.45;
       const br = Math.round(this.r * brightness);
       const bg = Math.round(this.g * brightness);
       const bb = Math.round(this.b * brightness);
@@ -84,13 +63,13 @@ const Visualizer = {
       ctx.fillStyle = `rgb(${br}, ${bg}, ${bb})`;
       ctx.fillRect(0, 0, W, H);
 
-      // Radial glow
+      // Radial glow that reacts to energy
       const cx = W / 2;
       const cy = H * 0.4;
-      const glowRadius = Math.max(W, H) * (0.3 + this.energy * 0.5);
+      const glowRadius = Math.max(W, H) * (0.2 + energy * 0.6);
       const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
-      glow.addColorStop(0, `rgba(255, 255, 255, ${0.08 + bass * 0.15})`);
-      glow.addColorStop(0.5, `rgba(255, 255, 255, ${0.02 + bass * 0.05})`);
+      glow.addColorStop(0, `rgba(255, 255, 255, ${0.05 + energy * 0.2})`);
+      glow.addColorStop(0.5, `rgba(255, 255, 255, ${0.01 + energy * 0.06})`);
       glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, W, H);
@@ -98,7 +77,7 @@ const Visualizer = {
       // Vignette
       const vignette = ctx.createRadialGradient(cx, H / 2, H * 0.3, cx, H / 2, H * 0.8);
       vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      vignette.addColorStop(1, 'rgba(0, 0, 0, 0.3)');
+      vignette.addColorStop(1, `rgba(0, 0, 0, ${0.25 + (1 - energy) * 0.15})`);
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, W, H);
     };
@@ -111,8 +90,8 @@ const Visualizer = {
       cancelAnimationFrame(this.animationId);
       this.animationId = null;
     }
-    this.hasAnalyserData = false;
-    this.pulsePhase = 0;
+    this.serverEnergy = 0;
+    this.smoothEnergy = 0;
   },
 
   drawBackground(canvas) {
