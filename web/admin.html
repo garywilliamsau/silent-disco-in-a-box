@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Silent Disco Admin</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+
+  <div id="loginScreen" class="admin-screen active">
+    <div class="login-box">
+      <h1>Admin Panel</h1>
+      <input type="password" id="passwordInput" placeholder="Enter password" autocomplete="off">
+      <button id="loginBtn">Login</button>
+      <div id="loginError" class="error hidden"></div>
+    </div>
+  </div>
+
+  <div id="dashScreen" class="admin-screen">
+    <header class="admin-header">
+      <h1>Silent Disco Admin</h1>
+      <div class="header-stats">
+        <span id="totalListeners">0 listeners</span>
+        <span id="lsStatus" class="status-dot"></span>
+      </div>
+    </header>
+
+    <div id="channelPanels" class="channel-panels"></div>
+
+    <div class="system-controls">
+      <h3>System</h3>
+      <button id="restartBtn" class="btn btn-warning">Restart Pi</button>
+      <button id="shutdownBtn" class="btn btn-danger">Shutdown Pi</button>
+    </div>
+  </div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>
