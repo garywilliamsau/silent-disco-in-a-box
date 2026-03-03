@@ -11,14 +11,17 @@ const AudioManager = {
   init() {
     this.audioEl = document.getElementById('audioPlayer');
 
-    this.audioEl.addEventListener('error', () => {
-      console.warn('Stream error, reconnecting...');
-      const src = this.audioEl.src;
-      this.audioEl.src = '';
-      setTimeout(() => {
-        this.audioEl.src = src;
-        this.audioEl.play().catch(() => {});
-      }, 2000);
+    // Auto-reconnect on stream errors or stalls
+    this.audioEl.addEventListener('error', () => this._reconnect());
+    this.audioEl.addEventListener('stalled', () => {
+      console.warn('Stream stalled, reconnecting...');
+      setTimeout(() => this._reconnect(), 3000);
+    });
+    this.audioEl.addEventListener('waiting', () => {
+      this._waitTimer = setTimeout(() => this._reconnect(), 8000);
+    });
+    this.audioEl.addEventListener('playing', () => {
+      clearTimeout(this._waitTimer);
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -67,6 +70,16 @@ const AudioManager = {
   async switchChannel(channelId) {
     if (this.currentChannel === channelId) return;
     return this.play(channelId);
+  },
+
+  _reconnect() {
+    console.warn('Stream reconnecting...');
+    const src = this.audioEl.src;
+    this.audioEl.src = '';
+    setTimeout(() => {
+      this.audioEl.src = src;
+      this.audioEl.play().catch(() => {});
+    }, 1000);
   },
 
   getAnalyser() {

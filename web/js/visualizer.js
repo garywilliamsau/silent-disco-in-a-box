@@ -7,6 +7,8 @@ const Visualizer = {
   channelColor: '#ffffff',
   r: 255, g: 255, b: 255,
   energy: 0,
+  hasAnalyserData: false,
+  pulsePhase: 0,
 
   init(canvasEl) {
     this.canvas = canvasEl;
@@ -29,44 +31,60 @@ const Visualizer = {
 
   start() {
     const analyser = AudioManager.getAnalyser();
-    if (!analyser) return;
-
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
+    const hasAnalyser = !!analyser;
+    const bufferLength = hasAnalyser ? analyser.frequencyBinCount : 0;
+    const dataArray = hasAnalyser ? new Uint8Array(bufferLength) : null;
     const ctx = this.ctx;
     const canvas = this.canvas;
+    let checkFrames = 0;
 
     const draw = () => {
       this.animationId = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
 
       const W = canvas.width;
       const H = canvas.height;
 
-      // Calculate bass energy (low frequencies 0-15) for the pulse
       let bass = 0;
-      for (let i = 0; i < 16; i++) bass += dataArray[i];
-      bass = bass / (16 * 255);
-
-      // Calculate overall energy for the glow
       let total = 0;
-      for (let i = 0; i < bufferLength; i++) total += dataArray[i];
-      total = total / (bufferLength * 255);
 
-      // Smooth the energy for a natural feel
+      if (hasAnalyser) {
+        analyser.getByteFrequencyData(dataArray);
+
+        // Check if analyser is returning real data (first 30 frames)
+        if (checkFrames < 30) {
+          checkFrames++;
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+          if (sum > 0) this.hasAnalyserData = true;
+        }
+
+        if (this.hasAnalyserData) {
+          for (let i = 0; i < 16; i++) bass += dataArray[i];
+          bass = bass / (16 * 255);
+          for (let i = 0; i < bufferLength; i++) total += dataArray[i];
+          total = total / (bufferLength * 255);
+        }
+      }
+
+      // Fallback: gentle CSS-style pulse when no analyser data
+      if (!this.hasAnalyserData) {
+        this.pulsePhase += 0.02;
+        bass = 0.3 + Math.sin(this.pulsePhase) * 0.15 + Math.sin(this.pulsePhase * 2.7) * 0.08;
+        total = 0.25 + Math.sin(this.pulsePhase * 0.8) * 0.1;
+      }
+
       this.energy += (total - this.energy) * 0.15;
 
-      // Dynamic brightness: base 0.6, pulses up to 1.0 with bass
+      // Dynamic brightness
       const brightness = 0.6 + bass * 0.4;
       const br = Math.round(this.r * brightness);
       const bg = Math.round(this.g * brightness);
       const bb = Math.round(this.b * brightness);
 
-      // Fill with pulsing channel colour
       ctx.fillStyle = `rgb(${br}, ${bg}, ${bb})`;
       ctx.fillRect(0, 0, W, H);
 
-      // Radial glow from center that reacts to energy
+      // Radial glow
       const cx = W / 2;
       const cy = H * 0.4;
       const glowRadius = Math.max(W, H) * (0.3 + this.energy * 0.5);
@@ -77,7 +95,7 @@ const Visualizer = {
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, W, H);
 
-      // Subtle dark vignette at edges
+      // Vignette
       const vignette = ctx.createRadialGradient(cx, H / 2, H * 0.3, cx, H / 2, H * 0.8);
       vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
       vignette.addColorStop(1, 'rgba(0, 0, 0, 0.3)');
@@ -93,6 +111,8 @@ const Visualizer = {
       cancelAnimationFrame(this.animationId);
       this.animationId = null;
     }
+    this.hasAnalyserData = false;
+    this.pulsePhase = 0;
   },
 
   drawBackground(canvas) {
