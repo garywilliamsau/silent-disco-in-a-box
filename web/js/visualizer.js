@@ -5,6 +5,8 @@ const Visualizer = {
   ctx: null,
   animationId: null,
   channelColor: '#ffffff',
+  r: 255, g: 255, b: 255,
+  energy: 0,
 
   init(canvasEl) {
     this.canvas = canvasEl;
@@ -20,6 +22,9 @@ const Visualizer = {
 
   setColor(color) {
     this.channelColor = color;
+    this.r = parseInt(color.slice(1, 3), 16);
+    this.g = parseInt(color.slice(3, 5), 16);
+    this.b = parseInt(color.slice(5, 7), 16);
   },
 
   start() {
@@ -38,24 +43,46 @@ const Visualizer = {
       const W = canvas.width;
       const H = canvas.height;
 
-      // Transparent clear so the CSS background color shows through
-      ctx.clearRect(0, 0, W, H);
+      // Calculate bass energy (low frequencies 0-15) for the pulse
+      let bass = 0;
+      for (let i = 0; i < 16; i++) bass += dataArray[i];
+      bass = bass / (16 * 255);
 
-      const barWidth = (W / bufferLength) * 2;
-      let x = 0;
+      // Calculate overall energy for the glow
+      let total = 0;
+      for (let i = 0; i < bufferLength; i++) total += dataArray[i];
+      total = total / (bufferLength * 255);
 
-      for (let i = 0; i < bufferLength; i++) {
-        const v = dataArray[i] / 255;
-        const barHeight = v * H * 0.8;
-        const alpha = 0.3 + v * 0.7;
+      // Smooth the energy for a natural feel
+      this.energy += (total - this.energy) * 0.15;
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-        ctx.globalAlpha = alpha;
-        ctx.fillRect(x, H - barHeight, barWidth - 1, barHeight);
+      // Dynamic brightness: base 0.6, pulses up to 1.0 with bass
+      const brightness = 0.6 + bass * 0.4;
+      const br = Math.round(this.r * brightness);
+      const bg = Math.round(this.g * brightness);
+      const bb = Math.round(this.b * brightness);
 
-        x += barWidth;
-      }
-      ctx.globalAlpha = 1;
+      // Fill with pulsing channel colour
+      ctx.fillStyle = `rgb(${br}, ${bg}, ${bb})`;
+      ctx.fillRect(0, 0, W, H);
+
+      // Radial glow from center that reacts to energy
+      const cx = W / 2;
+      const cy = H * 0.4;
+      const glowRadius = Math.max(W, H) * (0.3 + this.energy * 0.5);
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
+      glow.addColorStop(0, `rgba(255, 255, 255, ${0.08 + bass * 0.15})`);
+      glow.addColorStop(0.5, `rgba(255, 255, 255, ${0.02 + bass * 0.05})`);
+      glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle dark vignette at edges
+      const vignette = ctx.createRadialGradient(cx, H / 2, H * 0.3, cx, H / 2, H * 0.8);
+      vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vignette.addColorStop(1, 'rgba(0, 0, 0, 0.3)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, W, H);
     };
 
     draw();
