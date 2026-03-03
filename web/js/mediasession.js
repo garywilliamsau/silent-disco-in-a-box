@@ -7,7 +7,7 @@ const MediaSessionManager = {
     if (!this.isSupported) return;
 
     const artwork = channelId
-      ? [{ src: `/api/channels/${channelId}/color.png`, sizes: '64x64', type: 'image/png' }]
+      ? [{ src: `/api/channels/${channelId}/color.png?t=${Date.now()}`, sizes: '64x64', type: 'image/png' }]
       : [];
 
     navigator.mediaSession.metadata = new MediaMetadata({

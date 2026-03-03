@@ -36,9 +36,7 @@ apt-get install -y -qq \
   icecast2 \
   nginx \
   git \
-  bluez \
-  pulseaudio \
-  pulseaudio-module-bluetooth
+  bluez
 
 # Install Liquidsoap from OPAM or package manager
 echo "  Installing Liquidsoap..."
@@ -166,39 +164,61 @@ EOF
   fi
 fi
 
-echo "[9/10] Configuring Bluetooth audio..."
-# Make bt-capture.sh executable
+echo "[9/11] Installing Bluetooth audio packages..."
+apt-get install -y -qq \
+  bluez-alsa-utils \
+  python3-dbus \
+  python3-gi \
+  bluez-tools
+
+echo "[10/11] Configuring Bluetooth audio..."
 chmod +x "$INSTALL_DIR/config/bt-capture.sh"
 
-# PulseAudio system mode for Bluetooth audio routing
-cat > /etc/pulse/system.pa << 'PAEOF'
-load-module module-native-protocol-unix auth-anonymous=1 socket=/run/pulse/native
-load-module module-bluetooth-policy
-load-module module-bluetooth-discover
-load-module module-always-sink
-PAEOF
+# ALSA loopback module on boot (BT audio → Liquidsoap bridge)
+echo "snd-aloop" > /etc/modules-load.d/snd-aloop.conf
+modprobe snd-aloop 2>/dev/null || true
 
-mkdir -p /run/pulse
-chmod 755 /run/pulse
+# Configure BlueZ for auto-pairing
+cat > /etc/bluetooth/main.conf << 'BTEOF'
+[General]
+Name = SilentDisco
+Class = 0x200414
+DiscoverableTimeout = 0
+PairableTimeout = 0
+AlwaysPairable = true
 
-cat > /etc/tmpfiles.d/pulse.conf << 'TMPEOF'
-d /run/pulse 0755 pulse pulse -
-TMPEOF
+[Policy]
+AutoEnable=true
+BTEOF
 
-# Add users to pulse-access group
-usermod -aG pulse-access liquidsoap 2>/dev/null || true
-usermod -aG pulse-access "$PI_USER" 2>/dev/null || true
-
-# PulseAudio system service
-cat > /etc/systemd/system/pulseaudio-system.service << 'SVCEOF'
+# Disable built-in BT on boot (shares radio with WiFi — causes interference)
+# Only the USB dongle should be used for Bluetooth
+cat > /etc/systemd/system/disco-bt-setup.service << 'SVCEOF'
 [Unit]
-Description=PulseAudio System Mode (Bluetooth Audio)
+Description=Silent Disco - Disable built-in BT and configure USB dongle
 After=bluetooth.service
 Requires=bluetooth.service
 
 [Service]
-Type=notify
-ExecStart=/usr/bin/pulseaudio --system --disallow-exit --disallow-module-loading=0
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c "sleep 2 && hciconfig hci0 down 2>/dev/null; true"
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+# bluealsa-aplay service: routes BT audio to ALSA loopback
+cat > /etc/systemd/system/disco-bt-audio.service << 'SVCEOF'
+[Unit]
+Description=Silent Disco Bluetooth Audio Bridge
+After=bluealsa.service bluetooth.service
+Requires=bluealsa.service
+
+[Service]
+Type=simple
+ExecStartPre=/sbin/modprobe snd-aloop
+ExecStart=/usr/bin/bluealsa-aplay --pcm=hw:Loopback,0,0
 Restart=always
 RestartSec=3
 
@@ -206,34 +226,16 @@ RestartSec=3
 WantedBy=multi-user.target
 SVCEOF
 
-# Bluetooth auto-pairing agent
-cat > "$INSTALL_DIR/config/bt-agent.sh" << 'AGENTEOF'
-#!/bin/bash
-bluetoothctl << EOF
-power on
-discoverable on
-pairable on
-agent NoInputNoOutput
-default-agent
-EOF
-while true; do
-  bluetoothctl devices Connected 2>/dev/null | while read -r _ MAC _; do
-    bluetoothctl trust "$MAC" 2>/dev/null
-  done
-  sleep 5
-done
-AGENTEOF
-chmod +x "$INSTALL_DIR/config/bt-agent.sh"
-
+# Python auto-accept pairing agent service
 cat > /etc/systemd/system/disco-bt-agent.service << 'SVCEOF'
 [Unit]
-Description=Silent Disco Bluetooth Agent
+Description=Silent Disco Bluetooth Auto-Accept Agent
 After=bluetooth.service
 Requires=bluetooth.service
 
 [Service]
 Type=simple
-ExecStart=/opt/disco/config/bt-agent.sh
+ExecStart=/usr/bin/python3 /opt/disco/config/bt-auto-agent.py
 Restart=always
 RestartSec=5
 
@@ -241,27 +243,13 @@ RestartSec=5
 WantedBy=multi-user.target
 SVCEOF
 
-# Configure BlueZ
-cat > /etc/bluetooth/main.conf << 'BTEOF'
-[General]
-Name = SilentDisco
-Class = 0x200414
-DiscoverableTimeout = 0
-PairableTimeout = 0
-Discoverable = true
-Pairable = true
-
-[Policy]
-AutoEnable=true
-BTEOF
-
 rfkill unblock bluetooth 2>/dev/null || true
 
-echo "[10/11] Enabling services..."
+echo "[11/11] Enabling services..."
 systemctl unmask hostapd 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable hostapd dnsmasq icecast2 liquidsoap-disco disco-api nginx \
-  bluetooth pulseaudio-system disco-bt-agent
+  bluetooth bluealsa disco-bt-audio disco-bt-agent disco-bt-setup
 
 echo "[11/11] Testing Nginx configuration..."
 nginx -t
