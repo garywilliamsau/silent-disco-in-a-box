@@ -1,5 +1,6 @@
 ---
 created: 2026-03-03T23:41:19.342Z
+resolved: 2026-03-04
 title: Verify playlist order persists after reboot
 area: general
 files: []
