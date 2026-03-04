@@ -103,6 +103,13 @@ spotify_blue = input.external(
   "/opt/disco/config/spotify-capture.sh 3"
 )
 
+# Keep Spotify inputs always consumed so input.external pipe never backs up.
+# Without this: buffer fills to max (10s) → pipe blocks → arecord stalls →
+# ALSA loopback overflows → Raspotify gets EIO (errno 5) → "immediately paused"
+ignore(output.dummy(id="dummy_spotify_red",   fallible=true, spotify_red))
+ignore(output.dummy(id="dummy_spotify_green", fallible=true, spotify_green))
+ignore(output.dummy(id="dummy_spotify_blue",  fallible=true, spotify_blue))
+
 # Per-channel Spotify toggle
 red_use_spotify = ref(false)
 green_use_spotify = ref(false)
