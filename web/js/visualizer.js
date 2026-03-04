@@ -14,9 +14,6 @@ const Visualizer = {
   // Strobe state
   strobeAlpha: 0,
 
-  // Ring pool
-  rings: [],
-
   // Particle pool
   particles: [],
   maxParticles: 0,
@@ -36,7 +33,6 @@ const Visualizer = {
     this.maxParticles = cores <= 2 ? 0 : cores <= 4 ? 20 : 50;
 
     this.particles = [];
-    this.rings = [];
     this.strobeAlpha = 0;
     this._vignetteCache = [];
 
@@ -65,7 +61,6 @@ const Visualizer = {
     this.channelId = channelId;
     this.beatFired = false;
     this.strobeAlpha = 0;
-    this.rings = [];
     this.particles = [];
   },
 
@@ -119,11 +114,6 @@ const Visualizer = {
         // Strobe
         this.strobeAlpha = 0.55;
 
-        // Spawn 2 rings
-        const maxR = Math.sqrt(cx * cx + cy * cy) * 1.5;
-        this.rings.push({ radius: 0, maxRadius: maxR, life: 1.0 });
-        this.rings.push({ radius: 0, maxRadius: maxR * 0.85, life: 1.0, delay: 3 });
-
         // Kick existing particles — capped to prevent escape at high BPM
         this.particles.forEach(p => {
           p.vx = Math.sign(p.vx || 1) * Math.min(Math.abs(p.vx * 3), 6);
@@ -149,31 +139,7 @@ const Visualizer = {
         this.strobeAlpha *= 0.72; // decay ~80ms at 60fps
       }
 
-      // --- 3. Burst rings ---
-      for (let i = this.rings.length - 1; i >= 0; i--) {
-        const ring = this.rings[i];
-        if (ring.delay > 0) { ring.delay--; continue; }
-
-        const progress = ring.radius / ring.maxRadius;
-        ring.radius += ring.maxRadius * 0.028; // expand over ~600ms at 60fps
-        ring.life = 1 - progress;
-
-        if (ring.life <= 0) { this.rings.splice(i, 1); continue; }
-
-        const lineWidth = Math.max(1, (1 - progress) * 8);
-        const alpha = ring.life * 0.8;
-        const rr = Math.min(255, Math.round(this.r * 1.4));
-        const rg = Math.min(255, Math.round(this.g * 1.4));
-        const rb = Math.min(255, Math.round(this.b * 1.4));
-
-        ctx.beginPath();
-        ctx.arc(cx, cy, ring.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${rr}, ${rg}, ${rb}, ${alpha})`;
-        ctx.lineWidth = lineWidth;
-        ctx.stroke();
-      }
-
-      // --- 4. Particles ---
+      // --- 3. Particles ---
       if (this.maxParticles > 0) {
         while (this.particles.length < Math.floor(this.maxParticles * 0.4)) {
           this.particles.push(this._spawnParticle(W, H));
@@ -228,7 +194,6 @@ const Visualizer = {
     this.serverEnergy = 0;
     this.smoothEnergy = 0;
     this.strobeAlpha = 0;
-    this.rings = [];
     this.particles = [];
     this.beatFired = false;
   },
