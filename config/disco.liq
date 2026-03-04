@@ -103,17 +103,21 @@ spotify_blue = input.external(
   "/opt/disco/config/spotify-capture.sh 3"
 )
 
-# Keep Spotify inputs always consumed so input.external pipe never backs up.
-# Without this: buffer fills to max (10s) → pipe blocks → arecord stalls →
-# ALSA loopback overflows → Raspotify gets EIO (errno 5) → "immediately paused"
-ignore(output.dummy(id="dummy_spotify_red",   fallible=true, spotify_red))
-ignore(output.dummy(id="dummy_spotify_green", fallible=true, spotify_green))
-ignore(output.dummy(id="dummy_spotify_blue",  fallible=true, spotify_blue))
-
-# Per-channel Spotify toggle
+# Per-channel Spotify toggle (declared before output.dummy so the drain logic can reference them)
 red_use_spotify = ref(false)
 green_use_spotify = ref(false)
 blue_use_spotify = ref(false)
+
+# Keep Spotify inputs always consumed so input.external pipe never backs up.
+# Without this: buffer fills to max (10s) → pipe blocks → arecord stalls →
+# ALSA loopback overflows → Raspotify gets EIO (errno 5) → "immediately paused"
+#
+# IMPORTANT: only drain when Spotify is NOT active on the channel. When active,
+# the main switch already consumes the source at 1x rate. Two consumers at once
+# causes every other frame to be discarded → bad stuttering.
+ignore(output.dummy(id="dummy_spotify_red",   fallible=true, switch(track_sensitive=false, [(fun() -> not red_use_spotify(),   mksafe(spotify_red)),   (fun() -> true, blank())])))
+ignore(output.dummy(id="dummy_spotify_green", fallible=true, switch(track_sensitive=false, [(fun() -> not green_use_spotify(), mksafe(spotify_green)), (fun() -> true, blank())])))
+ignore(output.dummy(id="dummy_spotify_blue",  fallible=true, switch(track_sensitive=false, [(fun() -> not blue_use_spotify(),  mksafe(spotify_blue)),  (fun() -> true, blank())])))
 
 # === TALKOVER (voice broadcast over all channels) ===
 # Reads raw S16LE mono 44100Hz PCM from a named pipe fed by the Node.js server
