@@ -21,6 +21,10 @@ const Visualizer = {
   particles: [],
   maxParticles: 0,
 
+  // Cached vignette gradients (10 discrete energy levels)
+  _vignetteCache: [],
+  _bgAnimId: null,
+
   init(canvasEl) {
     this.canvas = canvasEl;
     this.ctx = canvasEl.getContext('2d');
@@ -31,10 +35,10 @@ const Visualizer = {
     const cores = navigator.hardwareConcurrency || 2;
     this.maxParticles = cores <= 2 ? 0 : cores <= 4 ? 20 : 50;
 
-    // Pre-fill particle pool
     this.particles = [];
     this.rings = [];
     this.strobeAlpha = 0;
+    this._vignetteCache = [];
 
     DiscoAPI.onEnergy((energy, beats) => {
       if (this.channelId && energy[this.channelId] !== undefined) {
@@ -47,6 +51,7 @@ const Visualizer = {
   resize() {
     this.canvas.width = this.canvas.offsetWidth * (window.devicePixelRatio || 1);
     this.canvas.height = this.canvas.offsetHeight * (window.devicePixelRatio || 1);
+    this._vignetteCache = []; // invalidate on resize
   },
 
   setColor(color) {
@@ -76,6 +81,18 @@ const Visualizer = {
     };
   },
 
+  _getVignette(ctx, cx, H, energy) {
+    // Quantise to 10 levels to avoid per-frame gradient allocation
+    const level = Math.round(energy * 10);
+    if (!this._vignetteCache[level]) {
+      const g = ctx.createRadialGradient(cx, H / 2, H * 0.3, cx, H / 2, H * 0.85);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, `rgba(0,0,0,${(0.3 - (level / 10) * 0.2).toFixed(2)})`);
+      this._vignetteCache[level] = g;
+    }
+    return this._vignetteCache[level];
+  },
+
   start() {
     const ctx = this.ctx;
     const canvas = this.canvas;
@@ -83,8 +100,11 @@ const Visualizer = {
     const draw = () => {
       this.animationId = requestAnimationFrame(draw);
 
-      const W = canvas.width;
-      const H = canvas.height;
+      // Guard against canvas not yet laid out (iOS Safari timing)
+      const W = canvas.width || canvas.offsetWidth * (window.devicePixelRatio || 1);
+      const H = canvas.height || canvas.offsetHeight * (window.devicePixelRatio || 1);
+      if (!W || !H) return;
+
       const cx = W / 2;
       const cy = H / 2;
 
@@ -104,10 +124,10 @@ const Visualizer = {
         this.rings.push({ radius: 0, maxRadius: maxR, life: 1.0 });
         this.rings.push({ radius: 0, maxRadius: maxR * 0.85, life: 1.0, delay: 3 });
 
-        // Kick existing particles
+        // Kick existing particles — capped to prevent escape at high BPM
         this.particles.forEach(p => {
-          p.vx *= 3;
-          p.vy *= 3;
+          p.vx = Math.sign(p.vx || 1) * Math.min(Math.abs(p.vx * 3), 6);
+          p.vy = Math.sign(p.vy || 1) * Math.min(Math.abs(p.vy * 3), 6);
         });
         // Spawn 3 new particles on beat
         if (this.maxParticles > 0) {
@@ -132,7 +152,7 @@ const Visualizer = {
       // --- 3. Burst rings ---
       for (let i = this.rings.length - 1; i >= 0; i--) {
         const ring = this.rings[i];
-        if (ring.delay && ring.delay > 0) { ring.delay--; continue; }
+        if (ring.delay > 0) { ring.delay--; continue; }
 
         const progress = ring.radius / ring.maxRadius;
         ring.radius += ring.maxRadius * 0.028; // expand over ~600ms at 60fps
@@ -155,7 +175,6 @@ const Visualizer = {
 
       // --- 4. Particles ---
       if (this.maxParticles > 0) {
-        // Seed particles to maintain baseline population
         while (this.particles.length < Math.floor(this.maxParticles * 0.4)) {
           this.particles.push(this._spawnParticle(W, H));
         }
@@ -168,7 +187,6 @@ const Visualizer = {
           p.vx *= 0.99;
           p.vy *= 0.99;
 
-          // Wrap at edges
           if (p.x < 0) p.x = W;
           if (p.x > W) p.x = 0;
           if (p.y < 0) p.y = H;
@@ -183,11 +201,8 @@ const Visualizer = {
         }
       }
 
-      // --- 5. Vignette ---
-      const vignette = ctx.createRadialGradient(cx, H / 2, H * 0.3, cx, H / 2, H * 0.85);
-      vignette.addColorStop(0, 'rgba(0,0,0,0)');
-      vignette.addColorStop(1, `rgba(0,0,0,${0.3 - energy * 0.2})`);
-      ctx.fillStyle = vignette;
+      // --- 5. Vignette (cached gradient) ---
+      ctx.fillStyle = this._getVignette(ctx, cx, H, energy);
       ctx.fillRect(0, 0, W, H);
     };
 
@@ -195,8 +210,10 @@ const Visualizer = {
     if (this.maxParticles > 0) {
       const W = canvas.width || canvas.offsetWidth;
       const H = canvas.height || canvas.offsetHeight;
-      for (let i = 0; i < Math.floor(this.maxParticles * 0.4); i++) {
-        this.particles.push(this._spawnParticle(W, H));
+      if (W && H) {
+        for (let i = 0; i < Math.floor(this.maxParticles * 0.4); i++) {
+          this.particles.push(this._spawnParticle(W, H));
+        }
       }
     }
 
@@ -216,7 +233,7 @@ const Visualizer = {
     this.beatFired = false;
   },
 
-  // Used by start screen only — unchanged
+  // Used by start screen — returns rAF id so caller can cancel on scene transition
   drawBackground(canvas) {
     const ctx = canvas.getContext('2d');
     canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
@@ -234,7 +251,7 @@ const Visualizer = {
     }));
 
     const animate = () => {
-      requestAnimationFrame(animate);
+      this._bgAnimId = requestAnimationFrame(animate);
       ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
       ctx.fillRect(0, 0, W, H);
       particles.forEach(p => {
@@ -250,5 +267,12 @@ const Visualizer = {
       });
     };
     animate();
+  },
+
+  stopBackground() {
+    if (this._bgAnimId) {
+      cancelAnimationFrame(this._bgAnimId);
+      this._bgAnimId = null;
+    }
   },
 };

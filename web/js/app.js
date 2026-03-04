@@ -103,6 +103,7 @@ const App = {
     const success = await AudioManager.play(channelId);
     if (!success) return;
 
+    Visualizer.stopBackground();
     this.showScreen('playerScreen');
 
     Visualizer.init(document.getElementById('visualizer'));
