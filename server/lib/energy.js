@@ -6,7 +6,9 @@ const { spawn } = require('child_process');
 // Broadcasts ~15 updates/sec via callback
 
 const SAMPLE_RATE = 22050;
-const ALPHA = (2 * Math.PI * 200) / (2 * Math.PI * 200 + SAMPLE_RATE); // IIR LP cutoff ~200Hz
+// First-order IIR low-pass: w0 = 2*pi*fc/fs, alpha = w0/(w0+1), fc=200Hz isolates kick/bass
+const _w0 = (2 * Math.PI * 200) / SAMPLE_RATE;
+const ALPHA = _w0 / (_w0 + 1); // ~0.054
 const WINDOW_SIZE = 43;       // ~2 seconds of history for rolling mean
 const BEAT_THRESHOLD = 1.8;   // bass RMS must exceed mean × this to fire beat
 const BEAT_COOLDOWN_MS = 250; // minimum ms between beats (max 240BPM)
@@ -21,6 +23,8 @@ class EnergyAnalyser {
     this._lpState = {};       // IIR filter state per channel
     this._bassHistory = {};   // rolling window of bass RMS values
     this._lastBeat = {};      // timestamp of last beat per channel
+
+    this._stopped = false;
 
     this.channels.forEach(ch => {
       this.energy[ch] = 0;
@@ -44,6 +48,11 @@ class EnergyAnalyser {
   }
 
   _startChannel(ch) {
+    // Reset filter and detection state on (re)start to avoid stale data causing false beats
+    this._lpState[ch] = 0;
+    this._bassHistory[ch] = [];
+    this._lastBeat[ch] = 0;
+
     const proc = spawn('ffmpeg', [
       '-i', `http://127.0.0.1:8000/${ch}`,
       '-f', 's16le',
@@ -56,13 +65,15 @@ class EnergyAnalyser {
     this.processes[ch] = proc;
 
     proc.stdout.on('data', (buf) => {
-      const samples = buf.length / 2;
+      const len = buf.length & ~1; // round down to even (s16le = 2 bytes/sample)
+      const samples = len / 2;
+      if (samples === 0) return;
 
       let sumFull = 0;
       let sumBass = 0;
       let lpPrev = this._lpState[ch];
 
-      for (let i = 0; i < buf.length; i += 2) {
+      for (let i = 0; i < len; i += 2) {
         const s = buf.readInt16LE(i) / 32768;
         // Full-range energy
         sumFull += s * s;
@@ -99,13 +110,14 @@ class EnergyAnalyser {
     });
 
     proc.on('close', () => {
-      setTimeout(() => this._startChannel(ch), 3000);
+      if (!this._stopped) setTimeout(() => this._startChannel(ch), 3000);
     });
 
     proc.stderr.on('data', () => {});
   }
 
   stop() {
+    this._stopped = true;
     clearInterval(this._interval);
     for (const ch of this.channels) {
       if (this.processes[ch]) this.processes[ch].kill();
