@@ -623,9 +623,9 @@ wss.on('connection', (ws) => {
 });
 
 // --- Energy analyser: real-time beat data for listener visualizer ---
-const energyAnalyser = new EnergyAnalyser(CHANNELS, (energy) => {
+const energyAnalyser = new EnergyAnalyser(CHANNELS, (energy, beats) => {
   if (wss.clients.size === 0) return;
-  const msg = JSON.stringify({ type: 'energy', energy });
+  const msg = JSON.stringify({ type: 'energy', energy, beats });
   for (const ws of wss.clients) {
     if (ws.readyState === ws.OPEN) ws.send(msg);
   }
