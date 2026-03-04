@@ -54,6 +54,10 @@ class EnergyAnalyser {
     this._lastBeat[ch] = 0;
 
     const proc = spawn('ffmpeg', [
+      '-fflags', 'nobuffer',
+      '-flags', 'low_delay',
+      '-probesize', '32',
+      '-analyzeduration', '0',
       '-i', `http://127.0.0.1:8000/${ch}`,
       '-f', 's16le',
       '-ar', String(SAMPLE_RATE),
