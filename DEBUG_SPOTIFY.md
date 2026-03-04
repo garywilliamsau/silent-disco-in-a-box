@@ -150,6 +150,34 @@ The real problem was always elsewhere (FIFO/clock/arecord). Our fix was unnecess
 
 ---
 
+## RESOLVED ✓
+
+**Actual root cause: `linein_red` crash-loop burning CPU and stalling the Liquidsoap clock.**
+
+`linein_red` was configured for card 3 (vc4hdmi1 — HDMI output, no capture support).
+`arecord` exited immediately with code 1. Liquidsoap restarted it 40-50 times/second.
+The log accumulated **1.4 million crash entries overnight**.
+
+This burned enough CPU to cause `clock.generic: "We must catchup 38+ seconds!"` —
+Liquidsoap's clock fell behind and then fast-forwarded. During catchup, Liquidsoap
+drained the Spotify pipe faster than arecord could supply → buffer underrun → stutter.
+
+**Why only linein_red?** Card numbers shifted when the vc4hdmi devices started
+enumerating at cards 2 and 3, bumping the Red USB adapter from card 3 → card 1.
+Green (card 4) and Blue (card 5) are on a different USB controller and were unaffected.
+
+**Fixes applied (commits 2b76411, 89ff684):**
+1. `spotify-capture.sh`: removed FIFO/dd, pipe arecord directly to stdout (simpler,
+   eliminates fork/exec jitter as a contributing factor)
+2. `linein-capture.sh`: sleep instead of crash when card not found — prevents
+   crash-loops destroying the Liquidsoap clock if card numbers shift again
+3. `disco.liq`: updated linein_red card 3 → card 1 (correct USB adapter)
+4. `disco.liq`: reverted output.dummy to simple unconditional form
+
+**After fix:** zero catchup messages, no stutter. Confirmed working.
+
+---
+
 ## Plan for Tomorrow
 
 ### Step 1: READ THE FILES FIRST
