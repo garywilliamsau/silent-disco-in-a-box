@@ -32,7 +32,7 @@ const DiscoAPI = {
       if (data.type === 'update') {
         this.listeners.forEach(cb => cb(data.channels));
       } else if (data.type === 'energy') {
-        this.energyListeners.forEach(cb => cb(data.energy));
+        this.energyListeners.forEach(cb => cb(data.energy, data.beats || {}));
       }
     };
 
