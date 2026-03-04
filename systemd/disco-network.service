@@ -1,0 +1,15 @@
+[Unit]
+Description=Silent Disco - Configure wlan0 static IP
+Before=hostapd.service dnsmasq.service
+After=network-pre.target NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/nmcli radio wifi on
+ExecStart=/sbin/ip link set wlan0 up
+ExecStart=/sbin/ip addr flush dev wlan0
+ExecStart=/sbin/ip addr add 192.168.4.1/24 dev wlan0
+
+[Install]
+WantedBy=multi-user.target
