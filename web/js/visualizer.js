@@ -9,6 +9,17 @@ const Visualizer = {
   serverEnergy: 0,
   smoothEnergy: 0,
   channelId: null,
+  beatFired: false,
+
+  // Strobe state
+  strobeAlpha: 0,
+
+  // Ring pool
+  rings: [],
+
+  // Particle pool
+  particles: [],
+  maxParticles: 0,
 
   init(canvasEl) {
     this.canvas = canvasEl;
@@ -16,10 +27,19 @@ const Visualizer = {
     this.resize();
     window.addEventListener('resize', () => this.resize());
 
-    // Listen for server-side energy updates
-    DiscoAPI.onEnergy((energy) => {
+    // Scale particle count to device capability
+    const cores = navigator.hardwareConcurrency || 2;
+    this.maxParticles = cores <= 2 ? 0 : cores <= 4 ? 20 : 50;
+
+    // Pre-fill particle pool
+    this.particles = [];
+    this.rings = [];
+    this.strobeAlpha = 0;
+
+    DiscoAPI.onEnergy((energy, beats) => {
       if (this.channelId && energy[this.channelId] !== undefined) {
         this.serverEnergy = energy[this.channelId];
+        if (beats && beats[this.channelId]) this.beatFired = true;
       }
     });
   },
@@ -38,6 +58,22 @@ const Visualizer = {
 
   setChannel(channelId) {
     this.channelId = channelId;
+    this.beatFired = false;
+    this.strobeAlpha = 0;
+    this.rings = [];
+    this.particles = [];
+  },
+
+  _spawnParticle(W, H) {
+    return {
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: (Math.random() - 0.5) * 1.5,
+      r: Math.random() * 3 + 1,
+      life: 1.0,
+      decay: 0.008 + Math.random() * 0.006,
+    };
   },
 
   start() {
@@ -49,38 +85,120 @@ const Visualizer = {
 
       const W = canvas.width;
       const H = canvas.height;
+      const cx = W / 2;
+      const cy = H / 2;
 
-      // Smooth the server energy for natural feel
+      // Smooth energy
       this.smoothEnergy += (this.serverEnergy - this.smoothEnergy) * 0.25;
       const energy = this.smoothEnergy;
 
-      // Dynamic brightness: base 0.55, pulses up to 1.0 with energy
-      const brightness = 0.55 + energy * 0.45;
-      const br = Math.round(this.r * brightness);
-      const bg = Math.round(this.g * brightness);
-      const bb = Math.round(this.b * brightness);
+      // --- On beat: trigger effects ---
+      if (this.beatFired) {
+        this.beatFired = false;
 
-      ctx.fillStyle = `rgb(${br}, ${bg}, ${bb})`;
+        // Strobe
+        this.strobeAlpha = 0.55;
+
+        // Spawn 2 rings
+        const maxR = Math.sqrt(cx * cx + cy * cy) * 1.5;
+        this.rings.push({ radius: 0, maxRadius: maxR, life: 1.0 });
+        this.rings.push({ radius: 0, maxRadius: maxR * 0.85, life: 1.0, delay: 3 });
+
+        // Kick existing particles
+        this.particles.forEach(p => {
+          p.vx *= 3;
+          p.vy *= 3;
+        });
+        // Spawn 3 new particles on beat
+        if (this.maxParticles > 0) {
+          for (let i = 0; i < 3 && this.particles.length < this.maxParticles; i++) {
+            this.particles.push(this._spawnParticle(W, H));
+          }
+        }
+      }
+
+      // --- 1. Base background ---
+      const brightness = 0.45 + energy * 0.55;
+      ctx.fillStyle = `rgb(${Math.round(this.r * brightness)}, ${Math.round(this.g * brightness)}, ${Math.round(this.b * brightness)})`;
       ctx.fillRect(0, 0, W, H);
 
-      // Radial glow that reacts to energy
-      const cx = W / 2;
-      const cy = H * 0.4;
-      const glowRadius = Math.max(W, H) * (0.2 + energy * 0.6);
-      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
-      glow.addColorStop(0, `rgba(255, 255, 255, ${0.05 + energy * 0.2})`);
-      glow.addColorStop(0.5, `rgba(255, 255, 255, ${0.01 + energy * 0.06})`);
-      glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, W, H);
+      // --- 2. Beat strobe ---
+      if (this.strobeAlpha > 0.001) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.strobeAlpha})`;
+        ctx.fillRect(0, 0, W, H);
+        this.strobeAlpha *= 0.72; // decay ~80ms at 60fps
+      }
 
-      // Vignette
-      const vignette = ctx.createRadialGradient(cx, H / 2, H * 0.3, cx, H / 2, H * 0.8);
-      vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      vignette.addColorStop(1, `rgba(0, 0, 0, ${0.25 + (1 - energy) * 0.15})`);
+      // --- 3. Burst rings ---
+      for (let i = this.rings.length - 1; i >= 0; i--) {
+        const ring = this.rings[i];
+        if (ring.delay && ring.delay > 0) { ring.delay--; continue; }
+
+        const progress = ring.radius / ring.maxRadius;
+        ring.radius += ring.maxRadius * 0.028; // expand over ~600ms at 60fps
+        ring.life = 1 - progress;
+
+        if (ring.life <= 0) { this.rings.splice(i, 1); continue; }
+
+        const lineWidth = Math.max(1, (1 - progress) * 8);
+        const alpha = ring.life * 0.8;
+        const rr = Math.min(255, Math.round(this.r * 1.4));
+        const rg = Math.min(255, Math.round(this.g * 1.4));
+        const rb = Math.min(255, Math.round(this.b * 1.4));
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, ring.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${rr}, ${rg}, ${rb}, ${alpha})`;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+      }
+
+      // --- 4. Particles ---
+      if (this.maxParticles > 0) {
+        // Seed particles to maintain baseline population
+        while (this.particles.length < Math.floor(this.maxParticles * 0.4)) {
+          this.particles.push(this._spawnParticle(W, H));
+        }
+
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const p = this.particles[i];
+          p.x += p.vx * (1 + energy);
+          p.y += p.vy * (1 + energy);
+          p.life -= p.decay;
+          p.vx *= 0.99;
+          p.vy *= 0.99;
+
+          // Wrap at edges
+          if (p.x < 0) p.x = W;
+          if (p.x > W) p.x = 0;
+          if (p.y < 0) p.y = H;
+          if (p.y > H) p.y = 0;
+
+          if (p.life <= 0) { this.particles.splice(i, 1); continue; }
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${p.life * (0.4 + energy * 0.4)})`;
+          ctx.fill();
+        }
+      }
+
+      // --- 5. Vignette ---
+      const vignette = ctx.createRadialGradient(cx, H / 2, H * 0.3, cx, H / 2, H * 0.85);
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, `rgba(0,0,0,${0.3 - energy * 0.2})`);
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, W, H);
     };
+
+    // Seed initial particles
+    if (this.maxParticles > 0) {
+      const W = canvas.width || canvas.offsetWidth;
+      const H = canvas.height || canvas.offsetHeight;
+      for (let i = 0; i < Math.floor(this.maxParticles * 0.4); i++) {
+        this.particles.push(this._spawnParticle(W, H));
+      }
+    }
 
     draw();
   },
@@ -92,8 +210,13 @@ const Visualizer = {
     }
     this.serverEnergy = 0;
     this.smoothEnergy = 0;
+    this.strobeAlpha = 0;
+    this.rings = [];
+    this.particles = [];
+    this.beatFired = false;
   },
 
+  // Used by start screen only — unchanged
   drawBackground(canvas) {
     const ctx = canvas.getContext('2d');
     canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
@@ -114,13 +237,10 @@ const Visualizer = {
       requestAnimationFrame(animate);
       ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
       ctx.fillRect(0, 0, W, H);
-
       particles.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
+        p.x += p.vx; p.y += p.vy;
         if (p.x < 0 || p.x > W) p.vx *= -1;
         if (p.y < 0 || p.y > H) p.vy *= -1;
-
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
@@ -129,7 +249,6 @@ const Visualizer = {
         ctx.globalAlpha = 1;
       });
     };
-
     animate();
-  }
+  },
 };
