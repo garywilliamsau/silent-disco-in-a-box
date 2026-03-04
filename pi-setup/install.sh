@@ -88,6 +88,7 @@ chmod +x "$INSTALL_DIR/config/bt-capture.sh" 2>/dev/null || true
 chmod +x "$INSTALL_DIR/config/bt-auto-agent.py" 2>/dev/null || true
 chmod +x "$INSTALL_DIR/config/talkover-capture.sh" 2>/dev/null || true
 chmod +x "$INSTALL_DIR/config/spotify-capture.sh" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/config/spotify-event.sh" 2>/dev/null || true
 
 echo "[6/$STEPS] Installing Node.js dependencies..."
 cd "$INSTALL_DIR/server"
