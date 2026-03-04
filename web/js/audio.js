@@ -38,17 +38,6 @@ const AudioManager = {
       }
     });
 
-    // Watchdog: detect frozen stream (currentTime not advancing while nominally playing)
-    this._lastTime = null;
-    this._watchdog = setInterval(() => {
-      if (!this.currentChannel || document.hidden || this.audioEl.paused) return;
-      const t = this.audioEl.currentTime;
-      if (this._lastTime !== null && t === this._lastTime) {
-        console.warn('Watchdog: stream frozen, reconnecting...');
-        this._reconnect();
-      }
-      this._lastTime = t;
-    }, 6000);
   },
 
   initAudioContext() {
