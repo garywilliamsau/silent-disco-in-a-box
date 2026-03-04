@@ -18,6 +18,9 @@ const conf = config.get();
 const PORT = conf.server.api_port || 3000;
 const CHANNELS = conf.channels.map(c => c.id);
 
+// Spotify track metadata per channel — set by librespot track_changed event hook
+const spotifyMeta = {};
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
@@ -67,7 +70,7 @@ app.get('/api/channels', async (req, res) => {
     const [npResults, statsResult] = await Promise.allSettled([
       Promise.all(CHANNELS.map(async (ch) => ({
         id: ch,
-        nowPlaying: await liquidsoap.getNowPlaying(ch).catch(() => null),
+        nowPlaying: spotifyMeta[ch] || await liquidsoap.getNowPlaying(ch).catch(() => null),
         alsaMode: await liquidsoap.getAlsaMode(ch).catch(() => false),
         bluetoothMode: await liquidsoap.getBluetoothMode(ch).catch(() => false),
         spotifyMode: await liquidsoap.getSpotifyMode(ch).catch(() => false),
@@ -444,6 +447,22 @@ app.post('/api/channels/:id/spotify', requireAdmin, async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+// --- POST /api/channels/:id/spotify-meta --- store track metadata from librespot event hook
+app.post('/api/channels/:id/spotify-meta', (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false });
+  const { title, artist, album } = req.body;
+  spotifyMeta[id] = { title: title || '', artist: artist || '', album: album || '', filename: '' };
+  res.json({ ok: true });
+});
+
+// --- DELETE /api/channels/:id/spotify-meta --- clear metadata when spotify stops
+app.delete('/api/channels/:id/spotify-meta', (req, res) => {
+  const { id } = req.params;
+  delete spotifyMeta[id];
+  res.json({ ok: true });
 });
 
 // --- POST /api/channels/:id/bluetooth --- enable/disable BT on a channel
