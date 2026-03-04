@@ -20,8 +20,9 @@ settings.frame.audio.samplerate.set(44100)
 settings.frame.audio.channels.set(2)
 
 # === LINE-IN AUDIO INPUTS (USB audio adapters) ===
-# Red=card 3, Green=card 4, Blue=card 5
+# Red=card 1, Green=card 4, Blue=card 5
 # Card numbers depend on USB port — check with 'arecord -l'
+# vc4hdmi devices now enumerate at cards 2 and 3, shifting USB adapters.
 linein_red = input.external(
   id="linein_red",
   buffer=1.0,
@@ -29,7 +30,7 @@ linein_red = input.external(
   samplerate=44100,
   restart_on_error=true,
   max=5.0,
-  "/opt/disco/config/linein-capture.sh 3"
+  "/opt/disco/config/linein-capture.sh 1"
 )
 
 linein_green = input.external(
