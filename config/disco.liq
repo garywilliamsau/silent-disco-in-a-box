@@ -157,7 +157,7 @@ red_playlist = playlist(
 red_queue = request.queue(id="red_queue")
 red_linein = switch(track_sensitive=false, [(fun() -> red_use_alsa(), audio_to_stereo(linein_red))])
 red_bt = switch(track_sensitive=false, [(fun() -> red_use_bt(), bt_input)])
-red_spotify = switch(track_sensitive=false, [(fun() -> red_use_spotify(), spotify_red)])
+red_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> red_use_spotify(), mksafe(spotify_red))])
 red_source = fallback(track_sensitive=false, [red_linein, red_bt, red_spotify, red_queue, red_playlist])
 red_safe = mksafe(red_source)
 
@@ -281,7 +281,7 @@ green_playlist = playlist(
 green_queue = request.queue(id="green_queue")
 green_linein = switch(track_sensitive=false, [(fun() -> green_use_alsa(), audio_to_stereo(linein_green))])
 green_bt = switch(track_sensitive=false, [(fun() -> green_use_bt(), bt_input)])
-green_spotify = switch(track_sensitive=false, [(fun() -> green_use_spotify(), spotify_green)])
+green_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> green_use_spotify(), mksafe(spotify_green))])
 green_source = fallback(track_sensitive=false, [green_linein, green_bt, green_spotify, green_queue, green_playlist])
 green_safe = mksafe(green_source)
 
@@ -405,7 +405,7 @@ blue_playlist = playlist(
 blue_queue = request.queue(id="blue_queue")
 blue_linein = switch(track_sensitive=false, [(fun() -> blue_use_alsa(), audio_to_stereo(linein_blue))])
 blue_bt = switch(track_sensitive=false, [(fun() -> blue_use_bt(), bt_input)])
-blue_spotify = switch(track_sensitive=false, [(fun() -> blue_use_spotify(), spotify_blue)])
+blue_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> blue_use_spotify(), mksafe(spotify_blue))])
 blue_source = fallback(track_sensitive=false, [blue_linein, blue_bt, blue_spotify, blue_queue, blue_playlist])
 blue_safe = mksafe(blue_source)
 
