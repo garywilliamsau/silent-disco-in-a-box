@@ -103,19 +103,20 @@ spotify_blue = input.external(
   "/opt/disco/config/spotify-capture.sh 3"
 )
 
-# Per-channel Spotify toggle (must be declared before output.dummy below)
+# Keep Spotify inputs always consumed so the pipe to arecord never backs up.
+# Without this: Liquidsoap buffer fills to max → pipe blocks → arecord stalls →
+# ALSA loopback overflows → raspotify gets EPIPE → "Broken Pipe" / stutter.
+# Liquidsoap 2.x caches frames for shared sources so dual-consumer is safe:
+# each frame is pulled from input.external exactly once regardless of how many
+# operators reference the source.
+ignore(output.dummy(id="dummy_spotify_red",   fallible=true, spotify_red))
+ignore(output.dummy(id="dummy_spotify_green", fallible=true, spotify_green))
+ignore(output.dummy(id="dummy_spotify_blue",  fallible=true, spotify_blue))
+
+# Per-channel Spotify toggle
 red_use_spotify = ref(false)
 green_use_spotify = ref(false)
 blue_use_spotify = ref(false)
-
-# Drain Spotify pipe only when Spotify is NOT active on that channel.
-# When Spotify IS active, output.dummy(fallible=true) pauses — no frames consumed.
-# This eliminates the dual-consumer race: output.dummy + channel switch both
-# consuming the same input.external caused erratic reads → pipe gaps → ALSA underrun
-# → librespot snd_pcm_writei "Broken Pipe" → stuttering.
-ignore(output.dummy(id="dummy_spotify_red",   fallible=true, switch(track_sensitive=false, [(fun() -> not red_use_spotify(),   mksafe(spotify_red))])))
-ignore(output.dummy(id="dummy_spotify_green", fallible=true, switch(track_sensitive=false, [(fun() -> not green_use_spotify(), mksafe(spotify_green))])))
-ignore(output.dummy(id="dummy_spotify_blue",  fallible=true, switch(track_sensitive=false, [(fun() -> not blue_use_spotify(),  mksafe(spotify_blue))])))
 
 
 # === TALKOVER (voice broadcast over all channels) ===
