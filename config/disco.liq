@@ -75,7 +75,7 @@ bt_input = input.external(
 # Red=subdevice 1, Green=subdevice 2, Blue=subdevice 3
 spotify_red = input.external(
   id="spotify_red",
-  buffer=2.0,
+  buffer=0.5,
   channels=2,
   samplerate=44100,
   restart_on_error=true,
@@ -85,7 +85,7 @@ spotify_red = input.external(
 
 spotify_green = input.external(
   id="spotify_green",
-  buffer=2.0,
+  buffer=0.5,
   channels=2,
   samplerate=44100,
   restart_on_error=true,
@@ -95,7 +95,7 @@ spotify_green = input.external(
 
 spotify_blue = input.external(
   id="spotify_blue",
-  buffer=2.0,
+  buffer=0.5,
   channels=2,
   samplerate=44100,
   restart_on_error=true,
