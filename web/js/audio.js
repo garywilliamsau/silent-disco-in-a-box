@@ -25,12 +25,30 @@ const AudioManager = {
     });
 
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && this.audioCtx) {
-        if (this.audioCtx.state === 'suspended' || this.audioCtx.state === 'interrupted') {
-          this.audioCtx.resume().catch(console.error);
-        }
+      if (document.hidden) return;
+      // Resume AudioContext if suspended
+      if (this.audioCtx && (this.audioCtx.state === 'suspended' || this.audioCtx.state === 'interrupted')) {
+        this.audioCtx.resume().catch(console.error);
+      }
+      // iOS auto-sleep silently stalls the stream without firing any events.
+      // Reconnect if the audio element is paused/ended/not-loaded when we wake.
+      if (this.currentChannel && (this.audioEl.paused || this.audioEl.ended || this.audioEl.readyState < 3)) {
+        console.warn('Stream stalled after screen wake, reconnecting...');
+        this._reconnect();
       }
     });
+
+    // Watchdog: detect frozen stream (currentTime not advancing while nominally playing)
+    this._lastTime = null;
+    this._watchdog = setInterval(() => {
+      if (!this.currentChannel || document.hidden || this.audioEl.paused) return;
+      const t = this.audioEl.currentTime;
+      if (this._lastTime !== null && t === this._lastTime) {
+        console.warn('Watchdog: stream frozen, reconnecting...');
+        this._reconnect();
+      }
+      this._lastTime = t;
+    }, 6000);
   },
 
   initAudioContext() {
