@@ -240,6 +240,10 @@ SVCEOF
   cp "$INSTALL_DIR/config/nm-dispatcher-keep-wifi-up.sh" /etc/NetworkManager/dispatcher.d/10-keep-wifi-up
   chmod 755 /etc/NetworkManager/dispatcher.d/10-keep-wifi-up
 
+  # NAT: hotspot clients get internet via ethernet (for Spotify Connect etc.)
+  echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-disco-forward.conf
+  sysctl -w net.ipv4.ip_forward=1
+
 elif [ -f /etc/dhcpcd.conf ]; then
   echo "  Detected dhcpcd, configuring static IP..."
   if ! grep -q "# Silent Disco hotspot" /etc/dhcpcd.conf; then
