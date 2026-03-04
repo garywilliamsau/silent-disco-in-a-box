@@ -253,16 +253,22 @@ app.get('/api/channels/:id/color.png', (req, res) => {
   res.send(png);
 });
 
-// --- GET /api/system --- CPU + memory usage
+// --- GET /api/system --- CPU + memory + temperature
 app.get('/api/system', (req, res) => {
   const os = require('os');
+  const fs = require('fs');
   const cpus = os.cpus();
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const load = os.loadavg()[0];
   const cpuPct = Math.round((load / cpus.length) * 100);
   const memPct = Math.round(((totalMem - freeMem) / totalMem) * 100);
-  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length });
+  let tempC = null;
+  try {
+    const raw = fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8');
+    tempC = Math.round(parseInt(raw, 10) / 1000);
+  } catch { /* not available */ }
+  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length, temp: tempC });
 });
 
 // --- GET /api/stats ---

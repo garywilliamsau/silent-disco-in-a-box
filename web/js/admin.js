@@ -540,6 +540,11 @@ const Admin = {
       if (data.ok) {
         document.getElementById('piCpu').textContent = `CPU ${data.cpu}%`;
         document.getElementById('piMem').textContent = `RAM ${data.mem}%`;
+        if (data.temp !== null) {
+          const t = data.temp;
+          document.getElementById('piTemp').textContent = `${t}°C`;
+          document.getElementById('piTemp').style.color = t >= 80 ? '#ff4444' : t >= 70 ? '#ffaa00' : '';
+        }
       }
     } catch { /* ignore */ }
   },
