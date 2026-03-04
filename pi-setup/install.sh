@@ -219,12 +219,12 @@ NMCONFEOF
 [Unit]
 Description=Silent Disco - Configure wlan0 static IP
 Before=hostapd.service dnsmasq.service
-After=network-pre.target
+After=network-pre.target NetworkManager.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/sbin/rfkill unblock wifi
+ExecStart=/usr/bin/nmcli radio wifi on
 ExecStart=/sbin/ip link set wlan0 up
 ExecStart=/sbin/ip addr flush dev wlan0
 ExecStart=/sbin/ip addr add 192.168.4.1/24 dev wlan0
@@ -234,6 +234,11 @@ WantedBy=multi-user.target
 SVCEOF
   systemctl daemon-reload
   systemctl enable disco-network
+
+  # Keep WiFi hotspot up even when ethernet connects
+  mkdir -p /etc/NetworkManager/dispatcher.d
+  cp "$INSTALL_DIR/config/nm-dispatcher-keep-wifi-up.sh" /etc/NetworkManager/dispatcher.d/10-keep-wifi-up
+  chmod 755 /etc/NetworkManager/dispatcher.d/10-keep-wifi-up
 
 elif [ -f /etc/dhcpcd.conf ]; then
   echo "  Detected dhcpcd, configuring static IP..."
