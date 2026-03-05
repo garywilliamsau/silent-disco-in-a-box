@@ -47,12 +47,24 @@ const Visualizer = {
     this.strobeAlpha = 0;
     this._vignetteCache = [];
 
-    DiscoAPI.onEnergy((energy, beats) => {
+    DiscoAPI.onEnergy((energy) => {
       if (this.channelId && energy[this.channelId] !== undefined) {
         this.serverEnergy = energy[this.channelId];
-        if (beats && beats[this.channelId]) this.beatFired = true;
+        // beats handled client-side — server flag ignored
       }
     });
+
+    // Compute LP alpha from actual AudioContext sample rate (44100 or 48000 Hz)
+    const analyser = AudioManager.getAnalyser();
+    if (analyser) {
+      const sr = analyser.context.sampleRate;
+      const w0 = (2 * Math.PI * 200) / sr;
+      this._lpAlpha = w0 / (w0 + 1);
+      this._tdBuffer = new Uint8Array(analyser.fftSize);
+    }
+    this._lpState = 0;
+    this._bassHistory = [];
+    this._lastBeat = 0;
   },
 
   resize() {
