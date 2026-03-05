@@ -276,8 +276,7 @@ AlwaysPairable = true
 AutoEnable=true
 BTEOF
 
-# Deploy bt-setup.sh (disables hci0, unblocks rfkill on hci1, brings up USB dongle)
-cp "$INSTALL_DIR/config/bt-setup.sh" /opt/disco/config/bt-setup.sh
+# bt-setup.sh is already in $INSTALL_DIR/config/ from step 5 — just ensure it's executable
 chmod +x /opt/disco/config/bt-setup.sh
 
 # Bluetooth setup service — runs bt-setup.sh on boot
