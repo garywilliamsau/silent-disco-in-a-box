@@ -1,5 +1,9 @@
 'use strict';
 
+const BEAT_THRESHOLD = 1.8;      // bass RMS must exceed mean × this to fire
+const BEAT_COOLDOWN_MS = 250;    // min ms between beats (max ~240 BPM)
+const BEAT_HISTORY_FRAMES = 90;  // rolling window size (~1.5 s at 60 fps)
+
 const Visualizer = {
   canvas: null,
   ctx: null,
@@ -10,6 +14,13 @@ const Visualizer = {
   smoothEnergy: 0,
   channelId: null,
   beatFired: false,
+
+  // Client-side beat detection
+  _lpState: 0,
+  _lpAlpha: 0,
+  _bassHistory: [],
+  _lastBeat: 0,
+  _tdBuffer: null,
 
   // Strobe state
   strobeAlpha: 0,
