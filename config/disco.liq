@@ -20,9 +20,8 @@ settings.frame.audio.samplerate.set(44100)
 settings.frame.audio.channels.set(2)
 
 # === LINE-IN AUDIO INPUTS (USB audio adapters) ===
-# Red=card 1, Green=card 4, Blue=card 5
-# Card numbers depend on USB port — check with 'arecord -l'
-# vc4hdmi devices now enumerate at cards 2 and 3, shifting USB adapters.
+# Card names are assigned by udev (/etc/udev/rules.d/99-linein.rules) based on
+# USB port path, so they remain stable regardless of card number changes.
 linein_red = input.external(
   id="linein_red",
   buffer=1.0,
@@ -30,7 +29,7 @@ linein_red = input.external(
   samplerate=44100,
   restart_on_error=true,
   max=5.0,
-  "/opt/disco/config/linein-capture.sh 1"
+  "/opt/disco/config/linein-capture.sh red"
 )
 
 linein_green = input.external(
@@ -40,7 +39,7 @@ linein_green = input.external(
   samplerate=44100,
   restart_on_error=true,
   max=5.0,
-  "/opt/disco/config/linein-capture.sh 4"
+  "/opt/disco/config/linein-capture.sh green"
 )
 
 linein_blue = input.external(
@@ -50,7 +49,7 @@ linein_blue = input.external(
   samplerate=44100,
   restart_on_error=true,
   max=5.0,
-  "/opt/disco/config/linein-capture.sh 5"
+  "/opt/disco/config/linein-capture.sh blue"
 )
 
 # Per-channel Line-In toggle
@@ -167,10 +166,10 @@ red_playlist = playlist(
 )
 
 red_queue = request.queue(id="red_queue")
-red_linein = switch(track_sensitive=false, [(fun() -> red_use_alsa(), audio_to_stereo(linein_red))])
-red_bt = switch(track_sensitive=false, [(fun() -> red_use_bt(), bt_input)])
+red_linein = switch(track_sensitive=false, transition_length=0., [(fun() -> red_use_alsa(), mksafe(audio_to_stereo(linein_red)))])
+red_bt = switch(track_sensitive=false, transition_length=0., [(fun() -> red_use_bt(), mksafe(bt_input))])
 red_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> red_use_spotify(), mksafe(spotify_red))])
-red_source = fallback(track_sensitive=false, [red_linein, red_bt, red_spotify, red_queue, red_playlist])
+red_source = fallback(track_sensitive=false, transition_length=0., [red_linein, red_bt, red_spotify, red_queue, red_playlist])
 red_safe = mksafe(red_source)
 
 red_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -291,10 +290,10 @@ green_playlist = playlist(
 )
 
 green_queue = request.queue(id="green_queue")
-green_linein = switch(track_sensitive=false, [(fun() -> green_use_alsa(), audio_to_stereo(linein_green))])
-green_bt = switch(track_sensitive=false, [(fun() -> green_use_bt(), bt_input)])
+green_linein = switch(track_sensitive=false, transition_length=0., [(fun() -> green_use_alsa(), mksafe(audio_to_stereo(linein_green)))])
+green_bt = switch(track_sensitive=false, transition_length=0., [(fun() -> green_use_bt(), mksafe(bt_input))])
 green_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> green_use_spotify(), mksafe(spotify_green))])
-green_source = fallback(track_sensitive=false, [green_linein, green_bt, green_spotify, green_queue, green_playlist])
+green_source = fallback(track_sensitive=false, transition_length=0., [green_linein, green_bt, green_spotify, green_queue, green_playlist])
 green_safe = mksafe(green_source)
 
 green_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -415,10 +414,10 @@ blue_playlist = playlist(
 )
 
 blue_queue = request.queue(id="blue_queue")
-blue_linein = switch(track_sensitive=false, [(fun() -> blue_use_alsa(), audio_to_stereo(linein_blue))])
-blue_bt = switch(track_sensitive=false, [(fun() -> blue_use_bt(), bt_input)])
+blue_linein = switch(track_sensitive=false, transition_length=0., [(fun() -> blue_use_alsa(), mksafe(audio_to_stereo(linein_blue)))])
+blue_bt = switch(track_sensitive=false, transition_length=0., [(fun() -> blue_use_bt(), mksafe(bt_input))])
 blue_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> blue_use_spotify(), mksafe(spotify_blue))])
-blue_source = fallback(track_sensitive=false, [blue_linein, blue_bt, blue_spotify, blue_queue, blue_playlist])
+blue_source = fallback(track_sensitive=false, transition_length=0., [blue_linein, blue_bt, blue_spotify, blue_queue, blue_playlist])
 blue_safe = mksafe(blue_source)
 
 blue_now_playing = ref([("artist",""), ("title",""), ("filename","")])
