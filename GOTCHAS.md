@@ -5,6 +5,7 @@ Things that have bitten us. Check this list when making changes.
 ## Docker Volume Mounts
 - **Docker creates directories for missing files.** If you add a new `-v /path/to/script.sh:/container/path.sh:ro` mount and the file doesn't exist on the host yet, Docker creates a directory at that path. Deploy the file BEFORE starting the container.
 - **Fix:** Always `scp` the file to the Pi first, THEN restart the Docker container.
+- **Missing mount = exit code 127 crash-loop.** If a script referenced in `disco.liq` is not mounted into the Docker container, Liquidsoap gets exit code 127 (file not found) and restarts it 40-50×/second. This stalls the clock ("Too much latency! Resetting active sources..."), drops Icecast connections, and causes 5s play / 20s silence cycles. ALL scripts called by `input.external` in disco.liq must be listed as `-v` mounts in `liquidsoap-disco.service`. Currently: `linein-capture.sh`, `bt-capture.sh`, `talkover-capture.sh`, `spotify-capture.sh`.
 
 ## Liquidsoap Syntax (v2.3.0)
 - **No `begin` inside `if`.** `if x then begin ... end` causes a parse error. Use `if x then ... end` (no `begin`).
