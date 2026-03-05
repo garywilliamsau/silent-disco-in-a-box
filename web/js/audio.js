@@ -7,37 +7,47 @@ const AudioManager = {
   analyser: null,
   currentChannel: null,
   initialized: false,
+  _reconnecting: false,
+  _stalledTimer: null,
+  _waitTimer: null,
 
   init() {
     this.audioEl = document.getElementById('audioPlayer');
 
-    // Auto-reconnect on stream errors or stalls
-    this.audioEl.addEventListener('error', () => this._reconnect());
-    this.audioEl.addEventListener('stalled', () => {
-      console.warn('Stream stalled, reconnecting...');
-      setTimeout(() => this._reconnect(), 3000);
+    this.audioEl.addEventListener('error', () => {
+      if (this.currentChannel) this._reconnect();
     });
+
+    this.audioEl.addEventListener('stalled', () => {
+      clearTimeout(this._stalledTimer);
+      this._stalledTimer = setTimeout(() => this._reconnect(), 3000);
+    });
+
     this.audioEl.addEventListener('waiting', () => {
+      clearTimeout(this._waitTimer);
       this._waitTimer = setTimeout(() => this._reconnect(), 8000);
     });
+
+    // Playback resumed — cancel any pending reconnect timers.
     this.audioEl.addEventListener('playing', () => {
+      clearTimeout(this._stalledTimer);
       clearTimeout(this._waitTimer);
+      this._stalledTimer = null;
+      this._waitTimer = null;
+      this._reconnecting = false;
     });
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) return;
-      // Resume AudioContext if suspended
       if (this.audioCtx && (this.audioCtx.state === 'suspended' || this.audioCtx.state === 'interrupted')) {
         this.audioCtx.resume().catch(console.error);
       }
       // iOS auto-sleep silently stalls the stream without firing any events.
-      // Reconnect if the audio element is paused/ended/not-loaded when we wake.
       if (this.currentChannel && (this.audioEl.paused || this.audioEl.ended || this.audioEl.readyState < 3)) {
         console.warn('Stream stalled after screen wake, reconnecting...');
         this._reconnect();
       }
     });
-
   },
 
   initAudioContext() {
@@ -56,12 +66,25 @@ const AudioManager = {
   },
 
   async play(channelId) {
+    // Cancel any pending reconnect timers so they don't fire and
+    // corrupt state after we've already switched to a new channel.
+    clearTimeout(this._stalledTimer);
+    clearTimeout(this._waitTimer);
+    this._stalledTimer = null;
+    this._waitTimer = null;
+    this._reconnecting = false;
+
     this.initAudioContext();
 
-    if (this.audioCtx.state === 'suspended') {
+    // Always resume — on iOS the AudioContext can silently suspend.
+    if (this.audioCtx.state !== 'running') {
       await this.audioCtx.resume();
     }
 
+    // Pause before switching src — ensures the browser closes the existing
+    // Icecast HTTP connection before opening a new one. Without this, old
+    // connections linger and inflate the listener count.
+    this.audioEl.pause();
     this.currentChannel = channelId;
     this.audioEl.src = DiscoAPI.getStreamUrl(channelId);
 
@@ -75,18 +98,35 @@ const AudioManager = {
   },
 
   async switchChannel(channelId) {
-    if (this.currentChannel === channelId) return;
-    return this.play(channelId);
+    if (channelId !== this.currentChannel) {
+      // Switching to a different channel — always reconnect.
+      return this.play(channelId);
+    }
+    // Same channel tap — only reconnect if audio has actually stalled.
+    // This avoids unnecessary re-connections (which restart from a buffer
+    // boundary, making songs sound like they're restarting from the top).
+    if (this.audioEl.paused || this.audioEl.ended || this.audioEl.readyState < 3) {
+      console.warn('Same channel tap, audio stalled — reconnecting');
+      return this.play(channelId);
+    }
+    // Playing fine — nothing to do.
   },
 
   _reconnect() {
+    // Guard: prevent concurrent reconnects.
+    // NOTE: only call _reconnect() from user-gesture handlers (tap, visibilitychange).
+    // Do NOT call it from auto-timers on iOS — play() without a gesture gets blocked
+    // and leaves the AudioContext in a broken state.
+    if (this._reconnecting || !this.currentChannel) return;
+    this._reconnecting = true;
+    clearTimeout(this._stalledTimer);
+    clearTimeout(this._waitTimer);
     console.warn('Stream reconnecting...');
-    const src = this.audioEl.src;
-    this.audioEl.src = '';
-    setTimeout(() => {
-      this.audioEl.src = src;
-      this.audioEl.play().catch(() => {});
-    }, 1000);
+
+    this.audioEl.src = DiscoAPI.getStreamUrl(this.currentChannel);
+    this.audioEl.play()
+      .catch(console.error)
+      .finally(() => { this._reconnecting = false; });
   },
 
   getAnalyser() {

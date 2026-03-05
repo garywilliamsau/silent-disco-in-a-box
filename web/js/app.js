@@ -99,6 +99,7 @@ const App = {
     if (!ch) return;
 
     this.currentChannel = channelId;
+    this._lastMode = null; // reset so first update doesn't trigger a reconnect
 
     const success = await AudioManager.play(channelId);
     if (!success) return;
@@ -129,6 +130,7 @@ const App = {
 
     MediaSessionManager.setMetadata({ title: ch.name, artist: 'Silent Disco', channelId: ch.id });
     MediaSessionManager.updatePlaybackState(true);
+    DiscoAPI.sendListening(channelId);
   },
 
   renderChannelDots() {
@@ -151,6 +153,7 @@ const App = {
         document.getElementById('channelName').style.color = ch.color;
         this.renderChannelDots();
         MediaSessionManager.setMetadata({ title: ch.name, artist: 'Silent Disco', channelId: ch.id });
+        DiscoAPI.sendListening(ch.id);
       });
       container.appendChild(dot);
     });
@@ -166,6 +169,16 @@ const App = {
     if (this.currentChannel) {
       const ch = channels.find(c => c.id === this.currentChannel);
       if (ch) {
+        // Track mode changes so we can detect when the DJ switches source.
+        // We don't auto-reconnect here — iOS blocks play() without a user gesture
+        // and doing so leaves the AudioContext broken. The stalled/error handlers
+        // in AudioManager will catch any resulting stream interruption instead.
+        const newMode = `${ch.alsaMode}-${ch.btMode}-${ch.spotifyMode}`;
+        if (this._lastMode !== null && this._lastMode !== newMode) {
+          console.log(`Source mode changed: ${this._lastMode} → ${newMode}`);
+        }
+        this._lastMode = newMode;
+
         const np = ch.nowPlaying;
         if (np) {
           document.getElementById('trackTitle').textContent = np.title || 'Unknown Track';

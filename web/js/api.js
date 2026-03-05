@@ -36,6 +36,13 @@ const DiscoAPI = {
       }
     };
 
+    this.ws.onopen = () => {
+      // Re-announce channel after reconnect so server restores our listener slot
+      if (this._listeningChannel) {
+        this.ws.send(JSON.stringify({ type: 'listen', channel: this._listeningChannel }));
+      }
+    };
+
     this.ws.onclose = () => {
       setTimeout(() => this.connectWebSocket(), 3000);
     };
@@ -43,6 +50,13 @@ const DiscoAPI = {
     this.ws.onerror = () => {
       this.ws.close();
     };
+  },
+
+  sendListening(channelId) {
+    this._listeningChannel = channelId;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'listen', channel: channelId }));
+    }
   },
 
   getStreamUrl(channelId) {
