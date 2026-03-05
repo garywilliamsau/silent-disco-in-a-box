@@ -3,6 +3,7 @@
 const BEAT_THRESHOLD = 1.8;      // bass RMS must exceed mean × this to fire
 const BEAT_COOLDOWN_MS = 250;    // min ms between beats (max ~240 BPM)
 const BEAT_HISTORY_FRAMES = 90;  // rolling window size (~1.5 s at 60 fps)
+const MIN_BASS_ABSOLUTE = 0.008; // ~-42 dB — gate out silence/noise floor
 
 const Visualizer = {
   canvas: null,
@@ -153,7 +154,7 @@ const Visualizer = {
           hist.push(bassRms);
           if (hist.length > BEAT_HISTORY_FRAMES) hist.shift();
 
-          if (hist.length >= 15) {
+          if (hist.length >= 15 && bassRms > MIN_BASS_ABSOLUTE) {
             const mean = hist.reduce((a, b) => a + b, 0) / hist.length;
             const now = performance.now();
             if (bassRms > mean * BEAT_THRESHOLD && now - this._lastBeat > BEAT_COOLDOWN_MS) {
