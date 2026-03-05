@@ -85,6 +85,9 @@ const Visualizer = {
     this.beatFired = false;
     this.strobeAlpha = 0;
     this.particles = [];
+    this._lpState = 0;
+    this._bassHistory = [];
+    this._lastBeat = 0;
   },
 
   _spawnParticle(W, H) {
@@ -219,6 +222,10 @@ const Visualizer = {
     this.strobeAlpha = 0;
     this.particles = [];
     this.beatFired = false;
+    this._lpState = 0;
+    this._bassHistory = [];
+    this._lastBeat = 0;
+    this._tdBuffer = null;
   },
 
   // Used by start screen — returns rAF id so caller can cancel on scene transition
