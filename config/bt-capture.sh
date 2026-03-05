@@ -1,21 +1,7 @@
 #!/bin/bash
 # Silent Disco - Bluetooth Audio Capture
-# Finds a Bluetooth A2DP source in PulseAudio and streams raw PCM to stdout
-# Used by Liquidsoap input.external
-# Exits with error if no BT source found (Liquidsoap will restart the process)
+# Reads BT audio from ALSA loopback where bluealsa-aplay writes it.
+# Flow: iPhone A2DP → bluealsa → bluealsa-aplay → hw:Loopback,0,0 → hw:Loopback,1,0 → here
+# Streams raw S16LE stereo 44100Hz PCM to stdout for Liquidsoap input.external.
 
-export PULSE_SERVER=unix:/run/pulse/native
-
-SRC=$(pactl list short sources 2>/dev/null | grep -i 'bluez_source' | head -1 | awk '{print $2}')
-
-if [ -z "$SRC" ]; then
-  sleep 2
-  exit 1
-fi
-
-exec parecord --server=unix:/run/pulse/native \
-  --device="$SRC" \
-  --format=s16le \
-  --rate=44100 \
-  --channels=2 \
-  --raw 2>/dev/null
+exec arecord -D hw:Loopback,1,0 -f S16_LE -r 44100 -c 2 -t raw --quiet
