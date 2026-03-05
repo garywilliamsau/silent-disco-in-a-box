@@ -50,10 +50,10 @@ apt-get install -y -qq \
   bluez-tools \
   openssl
 
-# Install Node.js 18+
-if ! command -v node &>/dev/null || [ "$(node -v | cut -d. -f1 | tr -d v)" -lt 18 ]; then
-  echo "  Installing Node.js 18..."
-  curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+# Install Node.js 22 (LTS)
+if ! command -v node &>/dev/null || [ "$(node -v | cut -d. -f1 | tr -d v)" -lt 20 ]; then
+  echo "  Installing Node.js 22..."
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y -qq nodejs
 fi
 
