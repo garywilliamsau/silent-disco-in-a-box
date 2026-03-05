@@ -187,6 +187,7 @@ ExecStart=/usr/bin/docker run --rm --name liquidsoap-disco \
   -v /etc/liquidsoap/disco.liq:/etc/liquidsoap/disco.liq:ro \
   -v /home/silentdisco/music:/home/silentdisco/music \
   -v /var/log/liquidsoap:/var/log/liquidsoap \
+  -v /opt/disco/config/linein-capture.sh:/opt/disco/config/linein-capture.sh:ro \
   -v /opt/disco/config/bt-capture.sh:/opt/disco/config/bt-capture.sh:ro \
   -v /opt/disco/config/talkover-capture.sh:/opt/disco/config/talkover-capture.sh:ro \
   -v /opt/disco/config/spotify-capture.sh:/opt/disco/config/spotify-capture.sh:ro \
