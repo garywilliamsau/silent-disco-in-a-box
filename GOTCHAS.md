@@ -72,6 +72,11 @@ Things that have bitten us. Check this list when making changes.
   ```
 - **`mksafe()` is implemented as `fallback([source, blank()])`.** It IS itself a `generate_from_multiple_sources` operator, which is why you see extra levels of that in crash stack traces. Wrapping a fallible switch in `mksafe()` makes it infallible (blank() output when unavailable), but this defeats the outer fallback's ability to skip to the next source.
 
+## Bluetooth (USB Dongle)
+- **hci1 (USB dongle) is soft-blocked by rfkill after hci0 is downed.** `hciconfig hci0 down` causes rfkill to soft-block hci1. Running `hciconfig hci1 up` then fails silently with error 132 (RF-kill). `bluetoothctl power on` also silently does nothing. Fix: `rfkill unblock 1` before `hciconfig hci1 up`.
+- **`bluetoothctl power on` gives no output when rfkill-blocked.** It just echoes the command prompt with no success/failure message. Always check `rfkill list` and `hciconfig -a` to verify state rather than trusting bluetoothctl output.
+- **disco-bt-setup.service must run bt-setup.sh, not an inline command.** Heredocs inside systemd `ExecStart` cause "bad unit file setting" parse errors. Put the logic in `/opt/disco/config/bt-setup.sh` and reference that.
+
 ## Raspotify / Spotify Connect
 - **Requires internet.** Spotify Connect needs internet to authenticate and stream. Everything else works offline.
 - **Spotify oEmbed API for metadata.** No auth needed, but only works with internet. Fails gracefully without it.

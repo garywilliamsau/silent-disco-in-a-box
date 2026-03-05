@@ -276,17 +276,21 @@ AlwaysPairable = true
 AutoEnable=true
 BTEOF
 
-# Disable built-in BT on boot (shares radio with WiFi)
+# Deploy bt-setup.sh (disables hci0, unblocks rfkill on hci1, brings up USB dongle)
+cp "$INSTALL_DIR/config/bt-setup.sh" /opt/disco/config/bt-setup.sh
+chmod +x /opt/disco/config/bt-setup.sh
+
+# Bluetooth setup service — runs bt-setup.sh on boot
 cat > /etc/systemd/system/disco-bt-setup.service << 'SVCEOF'
 [Unit]
-Description=Silent Disco - Disable built-in BT
+Description=Silent Disco - Disable built-in BT and configure USB dongle
 After=bluetooth.service
 Requires=bluetooth.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c "sleep 2 && hciconfig hci0 down 2>/dev/null; true"
+ExecStart=/opt/disco/config/bt-setup.sh
 
 [Install]
 WantedBy=multi-user.target

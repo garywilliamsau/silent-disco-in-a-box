@@ -35,8 +35,8 @@ run_ssh "sudo cp /tmp/server.js /tmp/package.json /opt/disco/server/ && sudo cp 
 
 # Config files
 echo "[3/4] Config files..."
-run_scp "$SCRIPT_DIR/config/disco.liq" "$SCRIPT_DIR/config/nginx-disco.conf" "$SCRIPT_DIR/config/bt-capture.sh" "$SCRIPT_DIR/config/bt-auto-agent.py" "$SCRIPT_DIR/config/linein-capture.sh" "$SCRIPT_DIR/config/spotify-capture.sh" "$PI_USER@$PI_IP:/tmp/"
-run_ssh "sudo cp /tmp/nginx-disco.conf /etc/nginx/sites-available/disco && sudo cp /tmp/bt-capture.sh /tmp/bt-auto-agent.py /tmp/linein-capture.sh /tmp/spotify-capture.sh /opt/disco/config/ && sudo chmod +x /opt/disco/config/bt-capture.sh /opt/disco/config/linein-capture.sh /opt/disco/config/spotify-capture.sh"
+run_scp "$SCRIPT_DIR/config/disco.liq" "$SCRIPT_DIR/config/nginx-disco.conf" "$SCRIPT_DIR/config/bt-capture.sh" "$SCRIPT_DIR/config/bt-auto-agent.py" "$SCRIPT_DIR/config/bt-setup.sh" "$SCRIPT_DIR/config/linein-capture.sh" "$SCRIPT_DIR/config/spotify-capture.sh" "$PI_USER@$PI_IP:/tmp/"
+run_ssh "sudo cp /tmp/nginx-disco.conf /etc/nginx/sites-available/disco && sudo cp /tmp/bt-capture.sh /tmp/bt-auto-agent.py /tmp/bt-setup.sh /tmp/linein-capture.sh /tmp/spotify-capture.sh /opt/disco/config/ && sudo chmod +x /opt/disco/config/bt-capture.sh /opt/disco/config/bt-setup.sh /opt/disco/config/linein-capture.sh /opt/disco/config/spotify-capture.sh"
 
 # Restart services
 echo "[4/4] Restarting services..."
@@ -57,7 +57,7 @@ if [ "$NEED_LIQUIDSOAP" = true ]; then
 fi
 
 # Cleanup
-run_ssh "rm -rf /tmp/disco-js /tmp/disco-css /tmp/disco-lib /tmp/index.html /tmp/admin.html /tmp/server.js /tmp/package.json /tmp/disco.liq /tmp/nginx-disco.conf /tmp/bt-capture.sh /tmp/bt-auto-agent.py /tmp/linein-capture.sh /tmp/spotify-capture.sh 2>/dev/null"
+run_ssh "rm -rf /tmp/disco-js /tmp/disco-css /tmp/disco-lib /tmp/index.html /tmp/admin.html /tmp/server.js /tmp/package.json /tmp/disco.liq /tmp/nginx-disco.conf /tmp/bt-capture.sh /tmp/bt-auto-agent.py /tmp/bt-setup.sh /tmp/linein-capture.sh /tmp/spotify-capture.sh 2>/dev/null"
 
 echo ""
 echo "Deploy complete!"
