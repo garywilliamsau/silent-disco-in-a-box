@@ -166,10 +166,21 @@ red_playlist = playlist(
 )
 
 red_queue = request.queue(id="red_queue")
-red_linein = switch(track_sensitive=false, transition_length=0., [(fun() -> red_use_alsa(), mksafe(audio_to_stereo(linein_red)))])
-red_bt = switch(track_sensitive=false, transition_length=0., [(fun() -> red_use_bt(), mksafe(bt_input))])
-red_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> red_use_spotify(), mksafe(spotify_red))])
-red_source = fallback(track_sensitive=false, transition_length=0., [red_linein, red_bt, red_spotify, red_queue, red_playlist])
+# Single switch with all input modes + always-true default prevents the
+# generate_from_multiple_sources Option.get(None) crash that occurs when a
+# fallible sub-switch loses its source and get_partial_frame is called on it
+# during fallback transition even with transition_length=0.
+red_queue_playlist = fallback(track_sensitive=false, transition_length=0., [red_queue, red_playlist])
+red_source = switch(
+  track_sensitive=false,
+  transition_length=0.,
+  [
+    (fun() -> red_use_alsa(),   mksafe(audio_to_stereo(linein_red))),
+    (fun() -> red_use_bt(),     mksafe(bt_input)),
+    (fun() -> red_use_spotify(), mksafe(spotify_red)),
+    (fun() -> true,              red_queue_playlist)
+  ]
+)
 red_safe = mksafe(red_source)
 
 red_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -290,10 +301,17 @@ green_playlist = playlist(
 )
 
 green_queue = request.queue(id="green_queue")
-green_linein = switch(track_sensitive=false, transition_length=0., [(fun() -> green_use_alsa(), mksafe(audio_to_stereo(linein_green)))])
-green_bt = switch(track_sensitive=false, transition_length=0., [(fun() -> green_use_bt(), mksafe(bt_input))])
-green_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> green_use_spotify(), mksafe(spotify_green))])
-green_source = fallback(track_sensitive=false, transition_length=0., [green_linein, green_bt, green_spotify, green_queue, green_playlist])
+green_queue_playlist = fallback(track_sensitive=false, transition_length=0., [green_queue, green_playlist])
+green_source = switch(
+  track_sensitive=false,
+  transition_length=0.,
+  [
+    (fun() -> green_use_alsa(),   mksafe(audio_to_stereo(linein_green))),
+    (fun() -> green_use_bt(),     mksafe(bt_input)),
+    (fun() -> green_use_spotify(), mksafe(spotify_green)),
+    (fun() -> true,                green_queue_playlist)
+  ]
+)
 green_safe = mksafe(green_source)
 
 green_now_playing = ref([("artist",""), ("title",""), ("filename","")])
@@ -414,10 +432,17 @@ blue_playlist = playlist(
 )
 
 blue_queue = request.queue(id="blue_queue")
-blue_linein = switch(track_sensitive=false, transition_length=0., [(fun() -> blue_use_alsa(), mksafe(audio_to_stereo(linein_blue)))])
-blue_bt = switch(track_sensitive=false, transition_length=0., [(fun() -> blue_use_bt(), mksafe(bt_input))])
-blue_spotify = switch(track_sensitive=false, transition_length=0., [(fun() -> blue_use_spotify(), mksafe(spotify_blue))])
-blue_source = fallback(track_sensitive=false, transition_length=0., [blue_linein, blue_bt, blue_spotify, blue_queue, blue_playlist])
+blue_queue_playlist = fallback(track_sensitive=false, transition_length=0., [blue_queue, blue_playlist])
+blue_source = switch(
+  track_sensitive=false,
+  transition_length=0.,
+  [
+    (fun() -> blue_use_alsa(),   mksafe(audio_to_stereo(linein_blue))),
+    (fun() -> blue_use_bt(),     mksafe(bt_input)),
+    (fun() -> blue_use_spotify(), mksafe(spotify_blue)),
+    (fun() -> true,               blue_queue_playlist)
+  ]
+)
 blue_safe = mksafe(blue_source)
 
 blue_now_playing = ref([("artist",""), ("title",""), ("filename","")])
