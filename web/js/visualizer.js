@@ -133,6 +133,37 @@ const Visualizer = {
       this.smoothEnergy += (this.serverEnergy - this.smoothEnergy) * 0.25;
       const energy = this.smoothEnergy;
 
+      // --- Client-side beat detection ---
+      {
+        const analyser = AudioManager.getAnalyser();
+        if (analyser && this._tdBuffer) {
+          analyser.getByteTimeDomainData(this._tdBuffer);
+          let lp = this._lpState;
+          let sumBass = 0;
+          const len = this._tdBuffer.length;
+          for (let i = 0; i < len; i++) {
+            const s = (this._tdBuffer[i] - 128) / 128;
+            lp = this._lpAlpha * s + (1 - this._lpAlpha) * lp;
+            sumBass += lp * lp;
+          }
+          this._lpState = lp;
+          const bassRms = Math.sqrt(sumBass / len);
+
+          const hist = this._bassHistory;
+          hist.push(bassRms);
+          if (hist.length > BEAT_HISTORY_FRAMES) hist.shift();
+
+          if (hist.length >= 15) {
+            const mean = hist.reduce((a, b) => a + b, 0) / hist.length;
+            const now = performance.now();
+            if (bassRms > mean * BEAT_THRESHOLD && now - this._lastBeat > BEAT_COOLDOWN_MS) {
+              this.beatFired = true;
+              this._lastBeat = now;
+            }
+          }
+        }
+      }
+
       // --- On beat: trigger effects ---
       if (this.beatFired) {
         this.beatFired = false;
