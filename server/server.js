@@ -86,10 +86,17 @@ app.get('/api/channels', async (req, res) => {
       ? statsResult.value.channels
       : {};
 
+    const wsListeners = {};
+    for (const ws of wss.clients) {
+      if (ws.readyState === ws.OPEN && ws.channel) {
+        wsListeners[ws.channel] = (wsListeners[ws.channel] || 0) + 1;
+      }
+    }
+
     const result = channels.map(ch => ({
       ...ch,
       ...getChannelConfig(ch.id),
-      listeners: stats['/' + ch.id]?.listeners ?? 0,
+      listeners: wsListeners[ch.id] || 0,
     }));
 
     res.json({ ok: true, channels: result });
@@ -443,6 +450,7 @@ app.post('/api/channels/:id/spotify', requireAdmin, async (req, res) => {
 
   try {
     await liquidsoap.setSpotifyMode(id, enabled);
+    if (!enabled) delete spotifyMeta[id]; // clear stale track name on manual disconnect
     res.json({ ok: true, channel: id, spotifyMode: enabled });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -614,9 +622,17 @@ async function broadcastNowPlaying() {
       }
     }
 
+    // Count WebSocket clients per channel (exact, no Icecast double-connection noise)
+    const wsListeners = {};
+    for (const ws of wss.clients) {
+      if (ws.readyState === ws.OPEN && ws.channel) {
+        wsListeners[ws.channel] = (wsListeners[ws.channel] || 0) + 1;
+      }
+    }
+
     const result = channels.map(ch => ({
       ...ch,
-      listeners: stats.channels['/' + ch.id]?.listeners ?? 0,
+      listeners: wsListeners[ch.id] || 0,
     }));
 
     const msg = JSON.stringify({ type: 'update', channels: result });
@@ -631,9 +647,17 @@ async function broadcastNowPlaying() {
 setInterval(broadcastNowPlaying, WS_INTERVAL_MS);
 
 wss.on('connection', (ws) => {
-  console.log('[ws] client connected');
+  ws.channel = null;
   broadcastNowPlaying();
-  ws.on('close', () => console.log('[ws] client disconnected'));
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data);
+      if (msg.type === 'listen' && validChannel(msg.channel)) {
+        ws.channel = msg.channel;
+      }
+    } catch { /* ignore malformed messages */ }
+  });
+  ws.on('close', () => {});
 });
 
 // --- Energy analyser: real-time beat data for listener visualizer ---
