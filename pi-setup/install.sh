@@ -181,7 +181,7 @@ Requires=docker.service
 Type=simple
 ExecStartPre=-/usr/bin/docker rm -f liquidsoap-disco
 ExecStartPre=/bin/chmod 777 /var/log/liquidsoap
-ExecStartPre=/bin/bash -c '[ -p /tmp/disco-talkover.pcm ] || mkfifo /tmp/disco-talkover.pcm; chmod 666 /tmp/disco-talkover.pcm'
+ExecStartPre=/bin/bash -c '[ -p /tmp/disco-talkover.pcm ] || mkfifo /tmp/disco-talkover.pcm; chown 10000:10001 /tmp/disco-talkover.pcm; chmod 660 /tmp/disco-talkover.pcm'
 ExecStart=/usr/bin/docker run --rm --name liquidsoap-disco \
   --network host \
   -v /etc/liquidsoap/disco.liq:/etc/liquidsoap/disco.liq:ro \
