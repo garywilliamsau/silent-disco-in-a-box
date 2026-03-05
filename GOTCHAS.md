@@ -37,7 +37,10 @@ Things that have bitten us. Check this list when making changes.
 ## USB Audio Adapters
 - **KT USB Audio adapters don't enumerate without a cable plugged in.** They need something connected to their input jack to be detected by the OS.
 - **USB 3.0 (blue) ports don't work for USB 2.0 audio adapters.** Use USB 2.0 (black) ports. BT dongles work fine in USB 3.0 ports though.
-- **Card numbers are not stable across reboots.** They depend on enumeration order. If adapters are always in the same ports, numbers stay the same.
+- **Card numbers are not stable across reboots.** They depend on enumeration order. Use udev rules to assign persistent card IDs instead.
+- **Persistent card naming via sysfs path matching.** `linein-capture.sh` finds the card number by scanning `/sys/class/sound/card*/` symlinks and matching the real path against the USB controller/port pattern (`xhci-hcd.0`, `xhci-hcd.1.*3-1/`, etc). Works inside Docker because `/sys/class/sound/` is accessible. More reliable than udev `ATTR{id}=` writes (which fail — ALSA card IDs are read-only once the driver is loaded).
+- **`sleep infinity` on not-found = stuck forever.** If `linein-capture.sh` sleeps when no card is found, Liquidsoap never restarts it on hot-unplug recovery. Instead, use a polling loop: `while true; do find card || sleep 2; done`. This self-heals when adapters are unplugged and replugged without needing a Liquidsoap restart or button toggle.
+- **To find the ID_PATH for a card:** `udevadm info /sys/class/sound/card1 | grep ID_PATH` on the host (not inside Docker).
 
 ## Raspberry Pi OS (Trixie)
 - **Liquidsoap 2.3.2 Debian package segfaults on Trixie arm64.** The RPi-modified ffmpeg (`libavfilter10 +rpt1`) is incompatible. Use Docker with `savonet/liquidsoap:v2.3.0` image instead.
@@ -53,6 +56,21 @@ Things that have bitten us. Check this list when making changes.
 ## Deploy Script
 - **Paths with spaces break shell scripts.** Always quote file paths. The deploy script uses functions with proper quoting.
 - **SSH host keys change on new SD cards / reboots.** Run `ssh-keygen -R <ip>` before connecting to a reimaged Pi.
+
+## Liquidsoap Source Transitions (v2.3.0)
+- **`transition_length=0.` does NOT prevent the `Option.get(None)` crash.** In Liquidsoap 2.3, `generate_from_multiple_sources` (the internal implementation of `switch()`/`fallback()`) calls `get_partial_frame` on the outgoing source at `source.ml:649` during a transition, even when `transition_length=0.`. If the outgoing switch just lost its active source (no frame yet generated), `Option.get(None)` at line 647 crashes Liquidsoap.
+- **Do NOT use a triple-switch + fallback for input mode selection.** The pattern `red_linein = switch(...)`/`red_bt = switch(...)`/`red_spotify = switch(...)` with `red_source = fallback([red_linein, red_bt, red_spotify, ...])` means each switch is fallible. When any switch loses its source and the fallback transitions away, the crash occurs.
+- **Correct pattern: single switch with always-true default.** Use a single `switch()` with all input modes as cases plus `(fun() -> true, queue_playlist_fallback)` as the last case. This ensures the switch is NEVER in a "no active source" state, so `get_partial_frame` always gets a valid frame. Example:
+  ```
+  red_queue_playlist = fallback(track_sensitive=false, transition_length=0., [red_queue, red_playlist])
+  red_source = switch(track_sensitive=false, transition_length=0., [
+    (fun() -> red_use_alsa(),    mksafe(audio_to_stereo(linein_red))),
+    (fun() -> red_use_bt(),      mksafe(bt_input)),
+    (fun() -> red_use_spotify(), mksafe(spotify_red)),
+    (fun() -> true,              red_queue_playlist)   # ← always-ready default
+  ])
+  ```
+- **`mksafe()` is implemented as `fallback([source, blank()])`.** It IS itself a `generate_from_multiple_sources` operator, which is why you see extra levels of that in crash stack traces. Wrapping a fallible switch in `mksafe()` makes it infallible (blank() output when unavailable), but this defeats the outer fallback's ability to skip to the next source.
 
 ## Raspotify / Spotify Connect
 - **Requires internet.** Spotify Connect needs internet to authenticate and stream. Everything else works offline.
