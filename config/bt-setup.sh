@@ -1,24 +1,42 @@
 #!/bin/bash
 # Silent Disco - Bluetooth Setup
-# Disables built-in BT (shares radio with WiFi on Pi 4/5) and configures USB dongle.
-# Called by disco-bt-setup.service on boot.
+# Works on both Pi 4 (hci0=built-in, hci1=USB) and Pi 5 (hci0=USB, hci1=built-in).
+# Identifies USB dongle by MAC via hciconfig, brings it up, downs everything else.
 
-# Disable built-in BT
-hciconfig hci0 down 2>/dev/null || true
+USB_DONGLE_MAC="5C:F3:70:8B:D2:C1"
 
-# Unblock USB dongle — rfkill may soft-block hci1 after hci0 is downed
-/usr/sbin/rfkill unblock 1 2>/dev/null || true
+# Unblock all BT radios
+/usr/sbin/rfkill unblock bluetooth 2>/dev/null || true
 
-# Bring up USB dongle
+# Bring all adapters up so hciconfig can read their MACs
+hciconfig hci0 up 2>/dev/null || true
 hciconfig hci1 up 2>/dev/null || true
+sleep 2
 
-# Wait for bluetoothd to register hci1
-sleep 3
+# Find which hci# is the USB dongle using hciconfig
+USB_HCI=$(hciconfig -a | awk -v mac="$USB_DONGLE_MAC" '
+  /^hci[0-9]+:/ { cur=$1; gsub(/:$/,"",cur) }
+  /BD Address:/ && $3 == mac { print cur }
+')
 
-# Configure USB dongle as active controller
+if [ -z "$USB_HCI" ]; then
+  echo "USB BT dongle ($USB_DONGLE_MAC) not found — is it plugged in?" >&2
+  exit 1
+fi
+
+echo "Found USB dongle at $USB_HCI"
+
+# Down all adapters except the USB dongle
+for i in 0 1; do
+  [ "hci$i" != "$USB_HCI" ] && hciconfig "hci$i" down 2>/dev/null || true
+done
+
+sleep 2
+
 bluetoothctl << BTEOF
-select 5C:F3:70:8B:D2:C1
+select $USB_DONGLE_MAC
 power on
+system-alias SilentDisco
 discoverable on
 pairable on
 BTEOF
