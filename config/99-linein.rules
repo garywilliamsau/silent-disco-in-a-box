@@ -1,0 +1,31 @@
+# /etc/udev/rules.d/99-linein.rules
+#
+# Assign persistent ALSA card IDs to USB audio adapters based on USB port.
+# This makes card names stable regardless of enumeration order (e.g. vc4hdmi
+# devices shifting other cards to different numbers after a reboot).
+#
+# After this runs, the cards are accessible as:
+#   hw:linein_red,0  /  hw:linein_green,0  /  hw:linein_blue,0
+#
+# To verify: arecord -l | grep linein
+# To check ID_PATH for a card: udevadm info /sys/class/sound/card1 | grep ID_PATH
+#
+# USB port paths (collected from this Pi — re-run udevadm if adapters move):
+#   Red   — USB controller 0, port 1  (upper-left black USB port)
+#   Green — USB controller 1, port 1  (lower-left black USB port)
+#   Blue  — USB controller 1, port 2  (lower-right black USB port)
+
+# Red channel
+SUBSYSTEM=="sound", KERNEL=="card*", ACTION=="add", \
+  ENV{ID_PATH}=="platform-xhci-hcd.0-usb-0:1:1.0", \
+  ATTR{id}="linein_red"
+
+# Green channel
+SUBSYSTEM=="sound", KERNEL=="card*", ACTION=="add", \
+  ENV{ID_PATH}=="platform-xhci-hcd.1-usb-0:1:1.0", \
+  ATTR{id}="linein_green"
+
+# Blue channel
+SUBSYSTEM=="sound", KERNEL=="card*", ACTION=="add", \
+  ENV{ID_PATH}=="platform-xhci-hcd.1-usb-0:2:1.0", \
+  ATTR{id}="linein_blue"
