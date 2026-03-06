@@ -9,16 +9,17 @@
 #   for the adapter to be replugged, then resumes automatically
 #
 # Port ↔ sysfs path (specific to this Pi):
-#   red   → xhci-hcd.0        (USB controller 0)
-#   green → xhci-hcd.1, 3-1/  (USB controller 1, port 1)
-#   blue  → xhci-hcd.1, 3-2/  (USB controller 1, port 2)
+#   All 3 adapters go through a USB hub on xhci-hcd.0
+#   red   → hub port 1 (1-1.1)
+#   green → hub port 2 (1-1.2)
+#   blue  → hub port 3 (1-1.3)
 
 CHANNEL="${1:-red}"
 
 case "$CHANNEL" in
-  red)   PORT_MATCH="xhci-hcd\.0" ;;
-  green) PORT_MATCH="xhci-hcd\.1.*3-1/" ;;
-  blue)  PORT_MATCH="xhci-hcd\.1.*3-2/" ;;
+  red)   PORT_MATCH="/1-1\.1/" ;;
+  green) PORT_MATCH="/1-1\.2/" ;;
+  blue)  PORT_MATCH="/1-1\.3/" ;;
   *)
     echo "linein-capture: unknown channel '$CHANNEL'" >&2
     sleep infinity
@@ -42,8 +43,12 @@ while true; do
     continue
   fi
 
-  echo "linein-capture: $CHANNEL → card $CARD, starting arecord" >&2
-  # Run arecord; when it exits (device unplugged or error), loop back and retry
-  arecord -D "hw:${CARD},0" -f S16_LE -r 44100 -c 1 -t raw --quiet 2>/dev/null
+  echo "linein-capture: $CHANNEL → card $CARD, starting arecord (boosted 20dB)" >&2
+  # Run arecord piped through ffmpeg for volume boost, then output raw PCM
+  arecord -D "hw:${CARD},0" -f S16_LE -r 44100 -c 1 -t raw --quiet 2>/dev/null \
+    | ffmpeg -f s16le -ar 44100 -ac 1 -i pipe:0 \
+        -af "volume=20dB" \
+        -f s16le -ar 44100 -ac 1 pipe:1 \
+        -loglevel quiet 2>/dev/null
   sleep 1
 done
