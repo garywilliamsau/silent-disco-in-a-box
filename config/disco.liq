@@ -165,12 +165,9 @@ red_playlist = playlist(
   reload_mode="watch",
   "/home/silentdisco/music/channel-red.m3u"
 )
+red_playlist = crossfade(duration=3., red_playlist)
 
 red_queue = request.queue(id="red_queue")
-# Single switch with all input modes + always-true default prevents the
-# generate_from_multiple_sources Option.get(None) crash that occurs when a
-# fallible sub-switch loses its source and get_partial_frame is called on it
-# during fallback transition even with transition_length=0.
 red_queue_playlist = fallback(track_sensitive=false, transition_length=0., [red_queue, red_playlist])
 red_source = switch(
   track_sensitive=false,
@@ -300,6 +297,7 @@ green_playlist = playlist(
   reload_mode="watch",
   "/home/silentdisco/music/channel-green.m3u"
 )
+green_playlist = crossfade(duration=3., green_playlist)
 
 green_queue = request.queue(id="green_queue")
 green_queue_playlist = fallback(track_sensitive=false, transition_length=0., [green_queue, green_playlist])
@@ -431,6 +429,7 @@ blue_playlist = playlist(
   reload_mode="watch",
   "/home/silentdisco/music/channel-blue.m3u"
 )
+blue_playlist = crossfade(duration=3., blue_playlist)
 
 blue_queue = request.queue(id="blue_queue")
 blue_queue_playlist = fallback(track_sensitive=false, transition_length=0., [blue_queue, blue_playlist])

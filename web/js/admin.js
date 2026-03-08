@@ -1385,26 +1385,69 @@ const Admin = {
       const data = await res.json();
       if (!data.ok) return;
       const container = document.getElementById('historyPanels');
-      container.innerHTML = this.channels.map(id => {
-        const entries = (data.history[id] || []).slice().reverse();
-        return `
-          <div class="history-channel">
-            <h4><span class="panel-dot" style="background:${this.channelColors[id]}"></span> ${this.channelNames[id]}</h4>
-            <div class="history-list">
-              ${entries.length === 0 ? '<div class="track-list-empty">No history yet</div>' :
-                entries.map(e => `
-                  <div class="history-entry">
-                    <div class="track-meta">
-                      <div class="track-name">${this.escapeHtml(e.title || 'Unknown')}</div>
-                      <div class="track-artist">${this.escapeHtml(e.artist || '')}</div>
-                    </div>
-                    <div class="history-time">${this.formatTime(e.playedAt)}</div>
-                  </div>
-                `).join('')}
-            </div>
+
+      // Merge all channel entries into a unified timeline
+      const allEvents = [];
+      for (const ch of this.channels) {
+        for (const e of (data.history[ch] || [])) {
+          allEvents.push({ ...e, channel: ch });
+        }
+      }
+      // Sort by time descending (newest first)
+      allEvents.sort((a, b) => new Date(b.playedAt) - new Date(a.playedAt));
+
+      // Build timeline rows: each unique timestamp gets a row with all channels
+      // Track what's playing on each channel at each point
+      const rows = [];
+      const currentTrack = {}; // what's playing per channel right now (scanning backwards)
+
+      for (const ev of allEvents) {
+        const time = this.formatTime(ev.playedAt);
+        // Find or create row for this timestamp
+        let row = rows.find(r => r.time === time);
+        if (!row) {
+          // Snapshot current state of all channels at this time
+          row = { time, channels: {} };
+          for (const ch of this.channels) {
+            row.channels[ch] = currentTrack[ch] || null;
+          }
+          rows.push(row);
+        }
+        // This event happened at this time on this channel
+        row.channels[ev.channel] = { title: ev.title, artist: ev.artist };
+        currentTrack[ev.channel] = { title: ev.title, artist: ev.artist };
+      }
+
+      if (rows.length === 0) {
+        container.innerHTML = '<div class="track-list-empty">No history yet</div>';
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="history-timeline">
+          <div class="history-header">
+            <div class="history-time-col">Time</div>
+            ${this.channels.map(ch => `
+              <div class="history-ch-col">
+                <span class="panel-dot" style="background:${this.channelColors[ch]}"></span>
+                ${this.channelNames[ch]}
+              </div>
+            `).join('')}
           </div>
-        `;
-      }).join('');
+          ${rows.map(row => `
+            <div class="history-row">
+              <div class="history-time-col">${row.time}</div>
+              ${this.channels.map(ch => {
+                const t = row.channels[ch];
+                return `<div class="history-ch-col${t ? '' : ' empty'}">
+                  ${t ? `<div class="track-name">${this.escapeHtml(t.title || 'Unknown')}</div>
+                         <div class="track-artist">${this.escapeHtml(t.artist || '')}</div>` : '—'}
+                </div>`;
+              }).join('')}
+            </div>
+          `).join('')}
+        </div>
+      `;
     } catch (e) { console.error('History load failed:', e); }
   },
 
