@@ -789,6 +789,7 @@ body {
   left: 4px;
   right: 4px;
   border-left: 3px solid;
+  border-top: 4px solid var(--bg);
   border-radius: 4px;
   padding: 2px 6px;
   overflow: hidden;
