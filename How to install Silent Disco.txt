@@ -1,0 +1,62 @@
+Step 1 — Flash the Pi (5 min)
+
+  Use Raspberry Pi Imager → pick Raspberry Pi OS Lite (64-bit).
+
+  In the Imager settings (gear icon):
+  - Set hostname: silentdisco
+  - Enable SSH
+  - Set username: silentdisco, password: raspberry
+  - Do not configure WiFi — the Pi becomes its own hotspot
+
+  Flash to SD, boot the Pi on ethernet.
+
+  ---
+  Step 2 — SSH in and run one command (~15 min)
+
+  ssh silentdisco@<pi-ip>
+
+  git clone https://github.com/garywilliamsau/silent-disco-in-a-box /tmp/silent-disco
+  cd /tmp/silent-disco
+  sudo bash pi-setup/install.sh
+  sudo reboot
+
+  The install script handles: hotspot, icecast, nginx, liquidsoap (Docker), Node.js API, Bluetooth,
+  Spotify Connect, all services.
+
+  ---
+  Step 3 — Connect to the Pi's WiFi and verify (~2 min)
+
+  After reboot, connect your phone to SilentDisco (password: letsdance).
+
+  - Listener portal: http://192.168.4.1
+  - Admin panel: http://192.168.4.1/admin (password: disco2024)
+
+  If the portal loads and shows channels, you're done. Upload some MP3s via the admin panel's
+  drag-and-drop and the music starts.
+
+  ---
+  Caveats / things that still need a human
+
+  1. USB port mapping for line-in: config/linein-capture.sh has hardcoded sysfs path patterns for
+  this specific Pi's USB ports. On a different Pi, run udevadm info /sys/class/sound/card1 | grep
+  ID_PATH for each adapter and update the three PORT_MATCH lines.
+  2. Bluetooth dongle MAC: The install script disables hci0 (built-in) on boot, but if your dongle
+  shows up as hci2 instead of hci1, you'll need to check hciconfig and adjust.
+  3. Music: You need to upload MP3s. Each channel needs at least one track to start playing. Do this
+  via the admin panel file upload.
+  4. Internet needed for Spotify Connect: Spotify Connect requires the Pi to reach the internet (via
+  ethernet with NAT, which the installer sets up). Works offline for everything else.
+
+  ---
+  Updating an existing Pi
+
+  git pull
+  ./deploy.sh
+
+  The deploy.sh script rsyncs just the changed files and restarts only what's needed (Liquidsoap only
+   if disco.liq changed, etc.).
+
+  ---
+  The honest summary: it's ~90% one-command, with the USB audio port mapping being the one thing
+  you'd need to tune per-Pi if you use line-in. Everything else (hotspot, Icecast, Bluetooth,
+  Spotify, streaming) is fully automated by install.sh.
