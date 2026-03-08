@@ -5,22 +5,29 @@ const fsSync = require('fs');
 const path = require('path');
 const playlistManager = require('./playlist-manager');
 const liquidsoap = require('./liquidsoap');
+const config = require('./config');
 
-const ASSIGNMENTS_PATH = '/home/pi/music/assignments.json';
-const CHANNEL_M3U_DIR = '/home/pi/music';
 const DEFAULT_CHANNELS = ['red', 'green', 'blue'];
 
+function getMusicRoot() {
+  const conf = config.get();
+  // Derive from library path (parent dir) or first channel's music_dir (parent dir)
+  if (conf.library && conf.library.path) return path.dirname(conf.library.path);
+  if (conf.channels && conf.channels[0]) return path.dirname(conf.channels[0].music_dir);
+  return '/home/pi/music';
+}
+
 function getAssignmentsPath() {
-  return ASSIGNMENTS_PATH;
+  return path.join(getMusicRoot(), 'assignments.json');
 }
 
 function getChannelM3UPath(channelId) {
-  return path.join(CHANNEL_M3U_DIR, `channel-${channelId}.m3u`);
+  return path.join(getMusicRoot(), `channel-${channelId}.m3u`);
 }
 
 async function getAssignments() {
   try {
-    const raw = await fs.readFile(ASSIGNMENTS_PATH, 'utf8');
+    const raw = await fs.readFile(getAssignmentsPath(), 'utf8');
     return JSON.parse(raw);
   } catch {
     const defaults = {};
@@ -32,9 +39,10 @@ async function getAssignments() {
 }
 
 async function saveAssignments(assignments) {
-  const dir = path.dirname(ASSIGNMENTS_PATH);
+  const assignPath = getAssignmentsPath();
+  const dir = path.dirname(assignPath);
   fsSync.mkdirSync(dir, { recursive: true });
-  await fs.writeFile(ASSIGNMENTS_PATH, JSON.stringify(assignments, null, 2));
+  await fs.writeFile(assignPath, JSON.stringify(assignments, null, 2));
 }
 
 async function getChannelPlaylist(channelId) {

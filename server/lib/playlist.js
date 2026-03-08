@@ -81,4 +81,15 @@ function ensureM3u(musicDir) {
   return ordered;
 }
 
-module.exports = { getOrderedFiles, saveOrder, moveTrack, ensureM3u };
+function shuffleOrder(musicDir) {
+  const ordered = getOrderedFiles(musicDir);
+  // Fisher-Yates shuffle
+  for (let i = ordered.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+  }
+  saveOrder(musicDir, ordered);
+  return ordered;
+}
+
+module.exports = { getOrderedFiles, saveOrder, moveTrack, ensureM3u, shuffleOrder };

@@ -16,6 +16,10 @@ const Admin = {
   currentPlaylistId: null,
   currentPlaylistData: null,
   channelAssignments: {},  // { channelId: playlistId }
+  nowPlayingFile: {},
+  nowPlayingTitle: {},
+  bulkSelectMode: false,
+  bulkSelected: new Set(),
 
   init() {
     document.getElementById('loginBtn').addEventListener('click', () => this.login());
@@ -98,6 +102,8 @@ const Admin = {
 
     if (tabName === 'library') this.loadLibrary();
     if (tabName === 'playlists') this.loadPlaylists();
+    if (tabName === 'history') this.loadHistory();
+    if (tabName === 'schedule') this.loadSchedules();
   },
 
   // === Channel Panels ===
@@ -160,6 +166,7 @@ const Admin = {
                 <button class="sort-btn active" data-sort="order" onclick="Admin.setSort('${id}', 'order', this)">Play Order</button>
                 <button class="sort-btn" data-sort="title" onclick="Admin.setSort('${id}', 'title', this)">Title</button>
                 <button class="sort-btn" data-sort="artist" onclick="Admin.setSort('${id}', 'artist', this)">Artist</button>
+                <button class="btn-shuffle" onclick="Admin.shuffleTracks('${id}')" title="Shuffle track order">Shuffle</button>
               </div>
             </div>
             <div class="track-list" id="track-list-${id}">
@@ -220,6 +227,7 @@ const Admin = {
         body: JSON.stringify({ playlistId: playlistId || null }),
       });
       this.channelAssignments[channelId] = playlistId || null;
+      this.loadTracks(channelId);
     } catch (e) {
       console.error('Assign playlist failed:', e);
     }
@@ -235,7 +243,7 @@ const Admin = {
       const data = await res.json();
       if (data.ok) {
         this.libraryTracks = data.tracks;
-        this.renderLibrary(data.tracks);
+        this.renderLibrary(this.sortTrackList(data.tracks, this.librarySort));
       }
     } catch (e) {
       console.error('Failed to load library:', e);
@@ -258,24 +266,71 @@ const Admin = {
     }
 
     container.innerHTML = tracks.map(t => `
-      <div class="track-item" data-filename="${this.escapeAttr(t.filename)}" data-title="${this.escapeAttr(t.title || '')}" data-artist="${this.escapeAttr(t.artist || '')}">
+      <div class="track-item" data-filename="${this.escapeAttr(t.filename)}" data-title="${this.escapeAttr(t.title || '')}" data-artist="${this.escapeAttr(t.artist || '')}" data-tags="${this.escapeAttr((t.tags || []).join(','))}">
+        ${this.bulkSelectMode ? `<input type="checkbox" class="bulk-checkbox" onchange="Admin.toggleBulkItem('${this.escapeAttr(t.filename)}', this)" ${this.bulkSelected.has(t.filename) ? 'checked' : ''}>` : ''}
         <div class="track-meta">
           <div class="track-name">${this.escapeHtml(t.title || t.filename)}</div>
-          <div class="track-artist">${this.escapeHtml(t.artist || '')}${t.duration ? ' &middot; ' + this.formatDuration(t.duration) : ''}</div>
+          <div class="track-artist">${this.escapeHtml(t.artist || '')}${t.duration ? ' &middot; ' + this.formatDuration(t.duration) : ''}${t.bpm ? ' &middot; ' + Math.round(t.bpm) + ' BPM' : ''}</div>
+        </div>
+        <button class="btn-preview" onclick="Admin.togglePreview('${this.escapeAttr(t.filename)}', this)" title="Preview">&#x25B6;</button>
+        <div class="track-tags" data-filename="${this.escapeAttr(t.filename)}">
+          ${(t.tags || []).map(tag => `<span class="tag" onclick="Admin.removeTag('${this.escapeAttr(t.filename)}', '${this.escapeAttr(tag)}')">${this.escapeHtml(tag)}</span>`).join('')}
+          <button class="tag-add-btn" onclick="Admin.addTagPrompt('${this.escapeAttr(t.filename)}')" title="Add tag">+</button>
         </div>
         <button class="track-delete" onclick="Admin.deleteFromLibrary('${this.escapeAttr(t.filename)}')" title="Delete">&#x2715;</button>
       </div>
     `).join('');
   },
 
+  librarySort: 'title',
+  pickerSort: 'title',
+
+  sortLibrary(sort, btn) {
+    this.librarySort = sort;
+    btn.parentElement.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (this.libraryTracks) {
+      const sorted = this.sortTrackList(this.libraryTracks, sort);
+      this.renderLibrary(sorted);
+    }
+  },
+
+  sortPicker(sort, btn) {
+    this.pickerSort = sort;
+    btn.parentElement.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (this.currentPlaylistData) {
+      const sorted = this.sortTrackList(this.libraryTracks, sort);
+      this.renderPlaylistPicker(sorted, this.currentPlaylistData.tracks);
+    }
+  },
+
+  sortTrackList(tracks, sort) {
+    const sorted = [...tracks];
+    if (sort === 'title') {
+      sorted.sort((a, b) => (a.title || a.filename).localeCompare(b.title || b.filename));
+    } else if (sort === 'artist') {
+      sorted.sort((a, b) => (a.artist || '').localeCompare(b.artist || '') || (a.title || a.filename).localeCompare(b.title || b.filename));
+    } else if (sort === 'recent') {
+      sorted.sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || ''));
+    } else if (sort === 'bpm') {
+      sorted.sort((a, b) => (b.bpm || 0) - (a.bpm || 0));
+    }
+    return sorted;
+  },
+
   filterLibrary() {
     const query = document.getElementById('librarySearch').value.toLowerCase();
+    const tagFilter = (document.getElementById('libraryTagFilter')?.value || '').toLowerCase().trim();
     const items = document.querySelectorAll('#libraryTrackList .track-item');
     items.forEach(item => {
       const title = (item.dataset.title || '').toLowerCase();
       const artist = (item.dataset.artist || '').toLowerCase();
       const filename = (item.dataset.filename || '').toLowerCase();
-      item.style.display = (title.includes(query) || artist.includes(query) || filename.includes(query)) ? '' : 'none';
+      const tags = (item.dataset.tags || '').toLowerCase();
+      const matchesSearch = !query || title.includes(query) || artist.includes(query) || filename.includes(query);
+      const matchesTag = !tagFilter || tags.includes(tagFilter);
+      item.style.display = (matchesSearch && matchesTag) ? '' : 'none';
     });
   },
 
@@ -414,6 +469,7 @@ const Admin = {
           ${pl.trackCount} track${pl.trackCount !== 1 ? 's' : ''}
           ${usedBy[pl.id] ? ' &middot; Used by: ' + usedBy[pl.id].join(', ') : ''}
         </div>
+        <button class="btn btn-sm" onclick="Admin.duplicatePlaylist('${this.escapeAttr(pl.id)}', event)">Duplicate</button>
       </div>
     `).join('');
   },
@@ -476,7 +532,7 @@ const Admin = {
 
       if (libData.ok) {
         this.libraryTracks = libData.tracks;
-        this.renderPlaylistPicker(libData.tracks, plData.ok ? plData.playlist.tracks : []);
+        this.renderPlaylistPicker(this.sortTrackList(libData.tracks, this.pickerSort), plData.ok ? plData.playlist.tracks : []);
       }
     } catch (e) {
       console.error('Failed to load playlist detail:', e);
@@ -496,24 +552,138 @@ const Admin = {
 
   renderPlaylistTracks(tracks) {
     const container = document.getElementById('playlistDetailTracks');
+    const countEl = document.getElementById('playlistTrackCount');
+    if (countEl) countEl.textContent = tracks ? `(${tracks.length})` : '';
     if (!tracks || tracks.length === 0) {
-      container.innerHTML = '<div class="track-list-empty">No tracks — add from library above</div>';
+      container.innerHTML = '<div class="track-list-empty">No tracks — add from library</div>';
       return;
     }
 
     container.innerHTML = tracks.map((t, i) => `
-      <div class="track-item">
-        <div class="track-order-btns">
-          <button class="track-move" onclick="Admin.movePlaylistTrack(${i}, 'up')" ${i === 0 ? 'disabled' : ''}>&#x25B2;</button>
-          <button class="track-move" onclick="Admin.movePlaylistTrack(${i}, 'down')" ${i === tracks.length - 1 ? 'disabled' : ''}>&#x25BC;</button>
-        </div>
+      <div class="track-item draggable-track" data-index="${i}">
+        <div class="drag-handle" title="Drag to reorder">&#x2630;</div>
         <div class="track-meta">
           <div class="track-name">${this.escapeHtml(t.title || t.filename)}</div>
-          <div class="track-artist">${this.escapeHtml(t.artist || '')}${t.duration ? ' &middot; ' + this.formatDuration(t.duration) : ''}</div>
+          <div class="track-artist">${this.escapeHtml(t.artist || '')}${t.duration ? ' &middot; ' + this.formatDuration(t.duration) : ''}${t.bpm ? ' &middot; ' + Math.round(t.bpm) + ' BPM' : ''}</div>
         </div>
+        <button class="btn-preview" onclick="Admin.togglePreview('${this.escapeAttr(t.filename)}', this)" title="Preview">&#x25B6;</button>
         <button class="track-delete" onclick="Admin.removeFromPlaylist('${this.escapeAttr(t.filename)}')" title="Remove">&#x2715;</button>
       </div>
     `).join('');
+
+    this.initDragReorder(container);
+  },
+
+  // Drag-and-drop reorder (mouse + touch)
+  _drag: null,
+
+  initDragReorder(container) {
+    const handles = container.querySelectorAll('.drag-handle');
+    handles.forEach(handle => {
+      handle.addEventListener('mousedown', (e) => this.dragStart(e, handle.parentElement, container));
+      handle.addEventListener('touchstart', (e) => this.dragStart(e, handle.parentElement, container), { passive: false });
+    });
+  },
+
+  dragStart(e, item, container) {
+    e.preventDefault();
+    const items = [...container.querySelectorAll('.draggable-track')];
+    const startIndex = items.indexOf(item);
+    const rect = item.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    // Create placeholder
+    const placeholder = document.createElement('div');
+    placeholder.className = 'drag-placeholder';
+    placeholder.style.height = rect.height + 'px';
+
+    // Style the dragged item
+    item.classList.add('dragging');
+    item.style.width = rect.width + 'px';
+    item.parentNode.insertBefore(placeholder, item);
+    item.style.position = 'fixed';
+    item.style.left = rect.left + 'px';
+    item.style.top = rect.top + 'px';
+    item.style.zIndex = '1000';
+
+    const startY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+    const offsetY = startY - rect.top;
+    let currentIndex = startIndex;
+
+    const onMove = (ev) => {
+      const clientY = ev.type === 'touchmove' ? ev.touches[0].clientY : ev.clientY;
+      item.style.top = (clientY - offsetY) + 'px';
+
+      // Auto-scroll the container
+      const cy = clientY - containerRect.top;
+      if (cy < 40) container.scrollTop -= 8;
+      else if (cy > containerRect.height - 40) container.scrollTop += 8;
+
+      // Find which item we're over
+      const siblings = [...container.querySelectorAll('.draggable-track:not(.dragging)')];
+      for (let i = 0; i < siblings.length; i++) {
+        const sibRect = siblings[i].getBoundingClientRect();
+        const midY = sibRect.top + sibRect.height / 2;
+        if (clientY < midY) {
+          container.insertBefore(placeholder, siblings[i]);
+          currentIndex = i;
+          return;
+        }
+      }
+      // Past the last item
+      if (siblings.length > 0) {
+        siblings[siblings.length - 1].after(placeholder);
+        currentIndex = siblings.length;
+      }
+    };
+
+    const onEnd = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+
+      item.classList.remove('dragging');
+      item.style.position = '';
+      item.style.left = '';
+      item.style.top = '';
+      item.style.width = '';
+      item.style.zIndex = '';
+      placeholder.replaceWith(item);
+
+      if (currentIndex !== startIndex) {
+        this.reorderPlaylistTrack(startIndex, currentIndex);
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
+  },
+
+  async reorderPlaylistTrack(fromIndex, toIndex) {
+    if (!this.currentPlaylistData) return;
+    const tracks = this.currentPlaylistData.tracks.map(t => t.filename);
+    const [moved] = tracks.splice(fromIndex, 1);
+    tracks.splice(toIndex, 0, moved);
+
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(this.currentPlaylistId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ tracks }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.openPlaylist(this.currentPlaylistId);
+      }
+    } catch (e) {
+      console.error('Reorder failed:', e);
+    }
   },
 
   renderPlaylistPicker(libraryTracks, playlistTracks) {
@@ -579,31 +749,6 @@ const Admin = {
     }
   },
 
-  async movePlaylistTrack(index, direction) {
-    if (!this.currentPlaylistData) return;
-    const tracks = this.currentPlaylistData.tracks.map(t => t.filename);
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= tracks.length) return;
-
-    [tracks[index], tracks[newIndex]] = [tracks[newIndex], tracks[index]];
-
-    try {
-      const res = await fetch(`/api/playlists/${encodeURIComponent(this.currentPlaylistId)}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`,
-        },
-        body: JSON.stringify({ tracks }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        this.openPlaylist(this.currentPlaylistId);
-      }
-    } catch (e) {
-      console.error('Move playlist track failed:', e);
-    }
-  },
 
   async removeFromPlaylist(filename) {
     if (!this.currentPlaylistData) return;
@@ -758,14 +903,27 @@ const Admin = {
 
   async loadTracks(id) {
     try {
-      const res = await fetch(`/api/channels/${id}/tracks`, {
-        headers: { 'Authorization': `Bearer ${this.token}` },
-      });
-      const data = await res.json();
-      if (data.ok) {
-        this.trackData[id] = data.tracks;
-        this.renderTracks(id, data.tracks);
+      const playlistId = this.channelAssignments[id];
+      let tracks;
+
+      if (playlistId) {
+        // Load tracks from the assigned playlist
+        const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}`, {
+          headers: { 'Authorization': `Bearer ${this.token}` },
+        });
+        const data = await res.json();
+        tracks = data.ok ? data.playlist.tracks : [];
+      } else {
+        // Fall back to per-channel track listing
+        const res = await fetch(`/api/channels/${id}/tracks`, {
+          headers: { 'Authorization': `Bearer ${this.token}` },
+        });
+        const data = await res.json();
+        tracks = data.ok ? data.tracks : [];
       }
+
+      this.trackData[id] = tracks;
+      this.renderTracks(id, tracks);
     } catch (e) {
       console.error(`Failed to load tracks for ${id}:`, e);
     }
@@ -785,8 +943,11 @@ const Admin = {
     const sorted = sort === 'order' ? tracks : this.sortTracks(tracks, sort);
     const showOrder = sort === 'order';
 
-    container.innerHTML = sorted.map((t, i) => `
-      <div class="track-item">
+    container.innerHTML = sorted.map((t, i) => {
+      const isPlaying = this.nowPlayingTitle && this.nowPlayingTitle[id] &&
+        (t.title === this.nowPlayingTitle[id] || t.filename === (this.nowPlayingFile && this.nowPlayingFile[id]));
+      return `
+      <div class="track-item ${isPlaying ? 'now-playing' : ''}">
         ${showOrder ? `<div class="track-order-btns">
           <button class="track-move" onclick="Admin.moveTrack('${id}', '${this.escapeAttr(t.filename)}', 'up')" ${i === 0 ? 'disabled' : ''}>&#x25B2;</button>
           <button class="track-move" onclick="Admin.moveTrack('${id}', '${this.escapeAttr(t.filename)}', 'down')" ${i === sorted.length - 1 ? 'disabled' : ''}>&#x25BC;</button>
@@ -797,7 +958,7 @@ const Admin = {
         </div>
         <button class="track-delete" onclick="Admin.deleteTrack('${id}', '${this.escapeAttr(t.filename)}')" title="Delete">&#x2715;</button>
       </div>
-    `).join('');
+    `;}).join('');
   },
 
   async moveTrack(id, filename, direction) {
@@ -817,6 +978,30 @@ const Admin = {
       }
     } catch (e) {
       console.error('Move failed:', e);
+    }
+  },
+
+  async shuffleTracks(id) {
+    try {
+      const res = await fetch(`/api/channels/${id}/tracks/shuffle`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.trackData[id] = data.tracks;
+        this.trackSort[id] = 'order';
+        // Update active sort button
+        const bar = document.querySelector(`#tracks-body-${id} .sort-bar`);
+        if (bar) {
+          bar.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+          const orderBtn = bar.querySelector('[data-sort="order"]');
+          if (orderBtn) orderBtn.classList.add('active');
+        }
+        this.renderTracks(id, data.tracks);
+      }
+    } catch (e) {
+      console.error('Shuffle failed:', e);
     }
   },
 
@@ -985,6 +1170,11 @@ const Admin = {
           if (npEl && ch.nowPlaying) {
             npEl.innerHTML = `<strong>${ch.nowPlaying.title || 'Unknown'}</strong> - ${ch.nowPlaying.artist || ''}`;
           }
+          // Store now playing filename for highlight
+          if (ch.nowPlaying) {
+            this.nowPlayingFile[ch.id] = ch.nowPlaying.filename || '';
+            this.nowPlayingTitle[ch.id] = ch.nowPlaying.title || '';
+          }
           if (lisEl) lisEl.textContent = `${ch.listeners || 0} listeners`;
           if (alsaBtn) {
             alsaBtn.textContent = ch.alsaMode ? 'Switch to Playlist' : 'Line-In';
@@ -1116,6 +1306,325 @@ const Admin = {
     } catch (e) {
       console.error('Talkover toggle failed:', e);
     }
+  },
+
+  // --- Shuffle Playlist ---
+
+  async shufflePlaylist() {
+    if (!this.currentPlaylistData) return;
+    const tracks = this.currentPlaylistData.tracks.map(t => t.filename);
+    for (let i = tracks.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+    }
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(this.currentPlaylistId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+        body: JSON.stringify({ tracks }),
+      });
+      const data = await res.json();
+      if (data.ok) this.openPlaylist(this.currentPlaylistId);
+    } catch (e) { console.error('Shuffle failed:', e); }
+  },
+
+  // --- Duplicate Playlist ---
+
+  async duplicatePlaylist(id, event) {
+    event.stopPropagation(); // don't open the playlist
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(id)}`, {
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      const data = await res.json();
+      if (!data.ok) return;
+      const pl = data.playlist;
+      const createRes = await fetch('/api/playlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+        body: JSON.stringify({ name: pl.name + ' (copy)', tracks: pl.tracks.map(t => t.filename) }),
+      });
+      const createData = await createRes.json();
+      if (createData.ok) {
+        this.loadPlaylists();
+        this.loadChannelAssignments();
+      }
+    } catch (e) { console.error('Duplicate failed:', e); }
+  },
+
+  // --- Add All Visible ---
+
+  async addAllVisible() {
+    if (!this.currentPlaylistData) return;
+    const visible = [...document.querySelectorAll('#playlistPickerList .picker-item:not(.in-playlist)')]
+      .filter(el => el.style.display !== 'none');
+    if (visible.length === 0) return;
+    const newFilenames = visible.map(el => el.dataset.filename);
+    const existing = this.currentPlaylistData.tracks.map(t => t.filename);
+    const tracks = [...existing, ...newFilenames];
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(this.currentPlaylistId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+        body: JSON.stringify({ tracks }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.openPlaylist(this.currentPlaylistId);
+        this.loadChannelAssignments();
+      }
+    } catch (e) { console.error('Add all failed:', e); }
+  },
+
+  // --- History ---
+
+  async loadHistory() {
+    try {
+      const res = await fetch('/api/history', { headers: { 'Authorization': `Bearer ${this.token}` } });
+      const data = await res.json();
+      if (!data.ok) return;
+      const container = document.getElementById('historyPanels');
+      container.innerHTML = this.channels.map(id => {
+        const entries = (data.history[id] || []).slice().reverse();
+        return `
+          <div class="history-channel">
+            <h4><span class="panel-dot" style="background:${this.channelColors[id]}"></span> ${this.channelNames[id]}</h4>
+            <div class="history-list">
+              ${entries.length === 0 ? '<div class="track-list-empty">No history yet</div>' :
+                entries.map(e => `
+                  <div class="history-entry">
+                    <div class="track-meta">
+                      <div class="track-name">${this.escapeHtml(e.title || 'Unknown')}</div>
+                      <div class="track-artist">${this.escapeHtml(e.artist || '')}</div>
+                    </div>
+                    <div class="history-time">${this.formatTime(e.playedAt)}</div>
+                  </div>
+                `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (e) { console.error('History load failed:', e); }
+  },
+
+  formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  },
+
+  formatDateTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (isToday) return `today ${time}`;
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (d.toDateString() === tomorrow.toDateString()) return `tomorrow ${time}`;
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ` ${time}`;
+  },
+
+  // --- Schedule ---
+
+  async loadSchedules() {
+    try {
+      // Populate playlist dropdown
+      const plRes = await fetch('/api/playlists', { headers: { 'Authorization': `Bearer ${this.token}` } });
+      const plData = await plRes.json();
+      const select = document.getElementById('schedPlaylist');
+      if (select && plData.ok) {
+        select.innerHTML = plData.playlists.map(pl =>
+          `<option value="${this.escapeAttr(pl.id)}">${this.escapeHtml(pl.name)}</option>`
+        ).join('');
+      }
+
+      const res = await fetch('/api/schedule', { headers: { 'Authorization': `Bearer ${this.token}` } });
+      const data = await res.json();
+      if (!data.ok) return;
+      const container = document.getElementById('scheduleList');
+      if (!data.schedules.length) {
+        container.innerHTML = '<div class="track-list-empty">No scheduled changes</div>';
+        return;
+      }
+      container.innerHTML = data.schedules.map(s => `
+        <div class="schedule-item">
+          <span class="panel-dot" style="background:${this.channelColors[s.channel] || '#888'}"></span>
+          <span>${this.channelNames[s.channel] || s.channel}</span>
+          <span>&rarr;</span>
+          <span><strong>${this.escapeHtml(s.playlistName || s.playlistId)}</strong></span>
+          <span class="schedule-time">at ${this.formatDateTime(s.time)}</span>
+          <button class="track-delete" onclick="Admin.removeSchedule(${s.id})" title="Cancel">&#x2715;</button>
+        </div>
+      `).join('');
+    } catch (e) { console.error('Schedule load failed:', e); }
+  },
+
+  async addSchedule() {
+    const channel = document.getElementById('schedChannel').value;
+    const playlistId = document.getElementById('schedPlaylist').value;
+    const timeStr = document.getElementById('schedTime').value;
+    if (!timeStr) { alert('Please set a time'); return; }
+    if (!playlistId) { alert('Please select a playlist'); return; }
+    if (!channel) { alert('Please select a channel'); return; }
+
+    const now = new Date();
+    const [h, m] = timeStr.split(':').map(Number);
+    const target = new Date(now);
+    target.setHours(h, m, 0, 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+
+    try {
+      await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+        body: JSON.stringify({ channel, playlistId, time: target.toISOString() }),
+      });
+      document.getElementById('schedTime').value = '';
+      this.loadSchedules();
+    } catch (e) { console.error('Add schedule failed:', e); }
+  },
+
+  async removeSchedule(id) {
+    try {
+      await fetch(`/api/schedule/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      this.loadSchedules();
+    } catch (e) { console.error('Remove schedule failed:', e); }
+  },
+
+  // --- Tags ---
+
+  async addTagPrompt(filename) {
+    const tag = prompt('Enter tag (e.g. dance, chill, 90s):');
+    if (!tag || !tag.trim()) return;
+    const cleanTag = tag.trim().toLowerCase();
+
+    // Find current tags
+    const track = this.libraryTracks.find(t => t.filename === filename);
+    const currentTags = track ? (track.tags || []) : [];
+    if (currentTags.includes(cleanTag)) return;
+
+    const newTags = [...currentTags, cleanTag];
+    try {
+      const res = await fetch(`/api/library/${encodeURIComponent(filename)}/tags`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+        body: JSON.stringify({ tags: newTags }),
+      });
+      const data = await res.json();
+      if (data.ok) this.loadLibrary();
+    } catch (e) { console.error('Tag add failed:', e); }
+  },
+
+  async removeTag(filename, tag) {
+    const track = this.libraryTracks.find(t => t.filename === filename);
+    const newTags = (track?.tags || []).filter(t => t !== tag);
+    try {
+      const res = await fetch(`/api/library/${encodeURIComponent(filename)}/tags`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+        body: JSON.stringify({ tags: newTags }),
+      });
+      const data = await res.json();
+      if (data.ok) this.loadLibrary();
+    } catch (e) { console.error('Tag remove failed:', e); }
+  },
+
+  // --- Bulk Select ---
+
+  toggleBulkSelect() {
+    this.bulkSelectMode = !this.bulkSelectMode;
+    this.bulkSelected.clear();
+    const btn = document.getElementById('bulkSelectBtn');
+    btn.textContent = this.bulkSelectMode ? 'Cancel' : 'Select';
+    btn.classList.toggle('active', this.bulkSelectMode);
+    this.renderLibrary(this.sortTrackList(this.libraryTracks, this.librarySort));
+    this.updateBulkBar();
+  },
+
+  toggleBulkItem(filename, checkbox) {
+    if (checkbox.checked) this.bulkSelected.add(filename);
+    else this.bulkSelected.delete(filename);
+    this.updateBulkBar();
+  },
+
+  updateBulkBar() {
+    let bar = document.getElementById('bulkActionBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'bulkActionBar';
+      bar.className = 'bulk-action-bar';
+      document.querySelector('.library-section').appendChild(bar);
+    }
+    if (!this.bulkSelectMode || this.bulkSelected.size === 0) {
+      bar.classList.add('hidden');
+      return;
+    }
+    bar.classList.remove('hidden');
+    bar.innerHTML = `
+      <span>${this.bulkSelected.size} selected</span>
+      <button class="btn btn-danger btn-sm" onclick="Admin.bulkDelete()">Delete Selected</button>
+    `;
+  },
+
+  async bulkDelete() {
+    if (!confirm(`Delete ${this.bulkSelected.size} tracks from library?`)) return;
+    for (const filename of this.bulkSelected) {
+      try {
+        await fetch(`/api/library/${encodeURIComponent(filename)}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${this.token}` },
+        });
+      } catch (e) { /* continue */ }
+    }
+    this.bulkSelected.clear();
+    this.loadLibrary();
+    this.updateBulkBar();
+  },
+
+  // --- Preview ---
+
+  _previewAudio: null,
+  _previewFile: null,
+  _previewBtn: null,
+
+  togglePreview(filename, btn) {
+    // If already playing this file, stop it
+    if (this._previewAudio && this._previewFile === filename) {
+      this.stopPreview();
+      return;
+    }
+    // Stop any other preview
+    this.stopPreview();
+
+    const audio = new Audio(`/api/library/stream/${encodeURIComponent(filename)}`);
+    audio.volume = 0.5;
+    audio.play().catch(() => {});
+    audio.addEventListener('ended', () => this.stopPreview());
+
+    btn.innerHTML = '&#x25A0;'; // square = stop
+    btn.classList.add('previewing');
+    this._previewAudio = audio;
+    this._previewFile = filename;
+    this._previewBtn = btn;
+  },
+
+  stopPreview() {
+    if (this._previewAudio) {
+      this._previewAudio.pause();
+      this._previewAudio.src = '';
+      this._previewAudio = null;
+    }
+    if (this._previewBtn) {
+      this._previewBtn.innerHTML = '&#x25B6;'; // triangle = play
+      this._previewBtn.classList.remove('previewing');
+      this._previewBtn = null;
+    }
+    this._previewFile = null;
   },
 
   // --- Helpers ---

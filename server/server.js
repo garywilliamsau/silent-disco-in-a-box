@@ -343,6 +343,11 @@ const upload = multer({
 const playHistory = {};
 CHANNELS.forEach(ch => { playHistory[ch] = []; });
 
+// Rich play history for the history log (separate from playHistory which stores filenames for "previous")
+const trackHistory = {};
+CHANNELS.forEach(ch => { trackHistory[ch] = []; });
+const MAX_TRACK_HISTORY = 200;
+
 // --- POST /api/channels/:id/upload ---
 app.post('/api/channels/:id/upload', requireAdmin, (req, res, next) => {
   const { id } = req.params;
@@ -409,6 +414,21 @@ app.post('/api/channels/:id/tracks/move', requireAdmin, async (req, res) => {
   const tracks = await metadata.scanDirectory(chConf.music_dir);
 
   // Return tracks in playlist order
+  const order = playlist.getOrderedFiles(chConf.music_dir);
+  const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+
+  res.json({ ok: true, channel: id, tracks: ordered });
+});
+
+// --- POST /api/channels/:id/tracks/shuffle --- randomize track order
+app.post('/api/channels/:id/tracks/shuffle', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+
+  const chConf = getChannelConfig(id);
+  playlist.shuffleOrder(chConf.music_dir);
+  await liquidsoap.reloadPlaylist(id).catch(() => {});
+  const tracks = await metadata.scanDirectory(chConf.music_dir);
   const order = playlist.getOrderedFiles(chConf.music_dir);
   const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
 
@@ -603,6 +623,51 @@ app.delete('/api/library/:filename', requireAdmin, async (req, res) => {
   }
 });
 
+// --- PUT /api/library/:filename/tags --- update tags on a library track
+app.put('/api/library/:filename/tags', requireAdmin, async (req, res) => {
+  const { filename } = req.params;
+  const { tags } = req.body;
+  if (!Array.isArray(tags)) return res.status(400).json({ ok: false, error: 'tags must be an array' });
+  try {
+    const entry = library.updateTags(filename, tags);
+    res.json({ ok: true, track: entry });
+  } catch (err) {
+    res.status(err.message === 'File not found in catalog' ? 404 : 500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- GET /api/library/stream/:filename --- stream audio file for preview
+app.get('/api/library/stream/:filename', requireAdmin, (req, res) => {
+  const { filename } = req.params;
+  if (filename.includes('/') || filename.includes('\\')) return res.status(400).send('Invalid filename');
+  const filePath = path.join(library.getLibraryPath(), filename);
+  try {
+    const stat = fs.statSync(filePath);
+    const ext = path.extname(filename).toLowerCase();
+    const mimeTypes = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.flac': 'audio/flac' };
+    res.set('Content-Type', mimeTypes[ext] || 'audio/mpeg');
+    res.set('Content-Length', stat.size);
+    res.set('Accept-Ranges', 'bytes');
+
+    // Support range requests for seeking
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+      res.status(206);
+      res.set('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+      res.set('Content-Length', end - start + 1);
+      fs.createReadStream(filePath, { start, end }).pipe(res);
+    } else {
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).send('File not found');
+    res.status(500).send(err.message);
+  }
+});
+
 // --- GET /api/library/album-art/:filename --- serve album art from library
 app.get('/api/library/album-art/:filename', async (req, res) => {
   const { filename } = req.params;
@@ -722,6 +787,58 @@ app.put('/api/channels/:id/playlist', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/history — play history per channel
+app.get('/api/history', requireAdmin, (req, res) => {
+  res.json({ ok: true, history: trackHistory });
+});
+
+// === SCHEDULE ENDPOINTS ===
+const schedules = [];
+let scheduleNextId = 1;
+
+// Check schedules every 30s
+setInterval(async () => {
+  const now = new Date();
+  for (let i = schedules.length - 1; i >= 0; i--) {
+    const sched = schedules[i];
+    if (new Date(sched.time) <= now) {
+      console.log(`[schedule] firing: ${sched.channel} → playlist ${sched.playlistId}`);
+      try {
+        await channelPlaylists.assignPlaylist(sched.channel, sched.playlistId);
+      } catch (err) {
+        console.error(`[schedule] failed to assign:`, err.message);
+      }
+      schedules.splice(i, 1);
+    }
+  }
+}, 30000);
+
+app.get('/api/schedule', requireAdmin, (req, res) => {
+  res.json({ ok: true, schedules });
+});
+
+app.post('/api/schedule', requireAdmin, async (req, res) => {
+  const { channel, playlistId, time } = req.body;
+  if (!validChannel(channel)) return res.status(400).json({ ok: false, error: 'Invalid channel' });
+  if (!playlistId || !time) return res.status(400).json({ ok: false, error: 'playlistId and time required' });
+
+  const pl = await playlistManager.getPlaylist(playlistId);
+  if (!pl) return res.status(404).json({ ok: false, error: 'Playlist not found' });
+
+  const sched = { id: scheduleNextId++, channel, playlistId, playlistName: pl.name, time };
+  schedules.push(sched);
+  schedules.sort((a, b) => new Date(a.time) - new Date(b.time));
+  res.json({ ok: true, schedule: sched });
+});
+
+app.delete('/api/schedule/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id);
+  const idx = schedules.findIndex(s => s.id === id);
+  if (idx === -1) return res.status(404).json({ ok: false, error: 'Schedule not found' });
+  schedules.splice(idx, 1);
+  res.json({ ok: true });
+});
+
 // --- Multer error handler ---
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
@@ -802,6 +919,15 @@ async function broadcastNowPlaying() {
           if (playHistory[ch.id].length > 10) playHistory[ch.id].shift();
         }
         lastKnownFile[ch.id] = filename;
+
+        // Also record in rich track history
+        trackHistory[ch.id].push({
+          title: ch.nowPlaying?.title || '',
+          artist: ch.nowPlaying?.artist || '',
+          filename: filename,
+          playedAt: new Date().toISOString(),
+        });
+        if (trackHistory[ch.id].length > MAX_TRACK_HISTORY) trackHistory[ch.id].shift();
       }
     }
 

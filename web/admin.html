@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Silent Disco Admin</title>
-  <link rel="stylesheet" href="/css/admin.css?v=7">
+  <link rel="stylesheet" href="/css/admin.css?v=13">
 </head>
 <body>
 
@@ -33,6 +33,8 @@
       <button class="tab-btn active" onclick="Admin.switchTab('channels')">Channels</button>
       <button class="tab-btn" onclick="Admin.switchTab('library')">Library</button>
       <button class="tab-btn" onclick="Admin.switchTab('playlists')">Playlists</button>
+      <button class="tab-btn" onclick="Admin.switchTab('schedule')">Schedule</button>
+      <button class="tab-btn" onclick="Admin.switchTab('history')">History</button>
     </div>
 
     <!-- Channels Tab -->
@@ -70,8 +72,17 @@
             <div class="progress-fill" id="library-progress-fill"></div>
           </div>
           <input type="text" id="librarySearch" class="library-search" placeholder="Search tracks..." oninput="Admin.filterLibrary()">
+          <input type="text" id="libraryTagFilter" class="library-search" placeholder="Filter by tag..." oninput="Admin.filterLibrary()" style="margin-bottom: 0.5rem;">
         </div>
         <div class="library-stats" id="libraryStats"></div>
+        <div class="sort-bar">
+          <span class="sort-label">Sort:</span>
+          <button class="sort-btn active" onclick="Admin.sortLibrary('title', this)">Title</button>
+          <button class="sort-btn" onclick="Admin.sortLibrary('artist', this)">Artist</button>
+          <button class="sort-btn" onclick="Admin.sortLibrary('recent', this)">Recent</button>
+          <button class="sort-btn" onclick="Admin.sortLibrary('bpm', this)">BPM</button>
+          <button class="btn btn-sm" id="bulkSelectBtn" onclick="Admin.toggleBulkSelect()">Select</button>
+        </div>
         <div class="track-list library-list" id="libraryTrackList">
           <div class="track-list-empty">Loading library...</div>
         </div>
@@ -99,21 +110,57 @@
             <h3 id="playlistDetailName"></h3>
             <button class="btn btn-danger" id="deletePlaylistBtn" onclick="Admin.deleteCurrentPlaylist()">Delete</button>
           </div>
-          <div class="playlist-track-picker">
-            <h4>Add tracks from library</h4>
-            <input type="text" id="pickerSearch" class="library-search" placeholder="Search library..." oninput="Admin.filterPicker()">
-            <div class="track-list" id="playlistPickerList"></div>
-          </div>
-          <h4>Playlist tracks (drag to reorder)</h4>
-          <div class="track-list" id="playlistDetailTracks">
-            <div class="track-list-empty">No tracks in this playlist</div>
+          <div class="playlist-columns">
+            <div class="playlist-col playlist-col-picker">
+              <h4>Add tracks from library</h4>
+              <input type="text" id="pickerSearch" class="library-search" placeholder="Search library..." oninput="Admin.filterPicker()">
+              <div class="sort-bar">
+                <span class="sort-label">Sort:</span>
+                <button class="sort-btn active" onclick="Admin.sortPicker('title', this)">Title</button>
+                <button class="sort-btn" onclick="Admin.sortPicker('artist', this)">Artist</button>
+              </div>
+              <button class="btn btn-sm" onclick="Admin.addAllVisible()">Add All Visible</button>
+              <div class="track-list" id="playlistPickerList"></div>
+            </div>
+            <div class="playlist-col playlist-col-tracks">
+              <h4>Playlist tracks <span id="playlistTrackCount" class="tracks-count"></span> <button class="btn btn-sm" onclick="Admin.shufflePlaylist()">Shuffle</button></h4>
+              <div class="track-list" id="playlistDetailTracks">
+                <div class="track-list-empty">No tracks — add from library</div>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Schedule Tab -->
+    <div id="tab-schedule" class="tab-content">
+      <div class="schedule-section">
+        <h3>Playlist Schedule</h3>
+        <div class="schedule-form">
+          <select id="schedChannel" class="schedule-select">
+            <option value="red">Red</option>
+            <option value="green">Green</option>
+            <option value="blue">Blue</option>
+          </select>
+          <select id="schedPlaylist" class="schedule-select"></select>
+          <input type="time" id="schedTime" class="schedule-time-input">
+          <button class="btn btn-primary" onclick="Admin.addSchedule()">Schedule</button>
+        </div>
+        <div id="scheduleList" class="schedule-list"></div>
+      </div>
+    </div>
+
+    <!-- History Tab -->
+    <div id="tab-history" class="tab-content">
+      <div class="history-section">
+        <h3>Play History</h3>
+        <div class="history-channels" id="historyPanels"></div>
       </div>
     </div>
   </div>
 
   <script src="/js/talkover.js?v=2"></script>
-  <script src="/js/admin.js?v=8"></script>
+  <script src="/js/admin.js?v=17"></script>
 </body>
 </html>

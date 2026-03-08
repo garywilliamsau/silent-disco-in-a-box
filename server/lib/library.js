@@ -57,6 +57,7 @@ async function extractMetadata(filePath) {
       artist: common.artist || common.albumartist || 'Unknown Artist',
       album: common.album || '',
       duration: format.duration || null,
+      bpm: common.bpm || null,
     };
   } catch (err) {
     console.error(`[library] failed to read metadata for ${filePath}:`, err.message);
@@ -65,6 +66,7 @@ async function extractMetadata(filePath) {
       artist: 'Unknown Artist',
       album: '',
       duration: null,
+      bpm: null,
     };
   }
 }
@@ -88,6 +90,8 @@ async function scanLibrary() {
       artist: meta.artist,
       album: meta.album,
       duration: meta.duration,
+      bpm: meta.bpm,
+      tags: [],
       uploadedAt: stat.mtime.toISOString(),
     };
   }));
@@ -136,6 +140,8 @@ async function addFiles(files) {
       artist: meta.artist,
       album: meta.album,
       duration: meta.duration,
+      bpm: meta.bpm,
+      tags: [],
       uploadedAt: new Date().toISOString(),
     };
 
@@ -199,4 +205,19 @@ async function getAlbumArt(filename) {
   }
 }
 
-module.exports = { getLibraryPath, scanLibrary, getCatalog, addFiles, removeFile, getAlbumArt };
+function updateTags(filename, tags) {
+  if (!catalogCache) {
+    catalogCache = readCatalogFromDisk() || [];
+  }
+
+  const entry = catalogCache.find(e => e.filename === filename);
+  if (!entry) {
+    throw new Error('File not found in catalog');
+  }
+
+  entry.tags = tags;
+  writeCatalog(catalogCache);
+  return entry;
+}
+
+module.exports = { getLibraryPath, scanLibrary, getCatalog, addFiles, removeFile, getAlbumArt, updateTags };
