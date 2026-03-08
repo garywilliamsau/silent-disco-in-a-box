@@ -5,8 +5,11 @@ const App = {
   channels: [],
   currentChannel: null,
 
+  _toastTimer: null,
+
   async init() {
     AudioManager.init();
+    AudioManager.onStreamStatus((status, failCount) => this._showStreamToast(status, failCount));
 
     try {
       const configRes = await DiscoAPI.getConfig();
@@ -157,6 +160,30 @@ const App = {
       });
       container.appendChild(dot);
     });
+  },
+
+  _showStreamToast(status, failCount) {
+    const toast = document.getElementById('streamToast');
+    clearTimeout(this._toastTimer);
+
+    toast.className = 'stream-toast';
+
+    if (status === 'reconnecting') {
+      toast.textContent = 'Connection lost \u2014 reconnecting\u2026';
+      toast.classList.add('reconnecting', 'visible');
+    } else if (status === 'failed') {
+      toast.textContent = 'Having trouble connecting. Tap to retry.';
+      toast.classList.add('failed', 'visible');
+      toast.onclick = () => {
+        toast.classList.remove('visible');
+        AudioManager.retryNow();
+      };
+    } else if (status === 'recovered') {
+      toast.textContent = 'Reconnected!';
+      toast.classList.add('recovered', 'visible');
+      toast.onclick = null;
+      this._toastTimer = setTimeout(() => toast.classList.remove('visible'), 2000);
+    }
   },
 
   handleUpdate(channels) {

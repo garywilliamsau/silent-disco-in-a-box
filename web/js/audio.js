@@ -10,6 +10,14 @@ const AudioManager = {
   _reconnecting: false,
   _stalledTimer: null,
   _waitTimer: null,
+  _failCount: 0,
+  _onStreamStatus: null,
+
+  onStreamStatus(cb) { this._onStreamStatus = cb; },
+
+  _emitStatus(status) {
+    if (this._onStreamStatus) this._onStreamStatus(status, this._failCount);
+  },
 
   init() {
     this.audioEl = document.getElementById('audioPlayer');
@@ -34,7 +42,11 @@ const AudioManager = {
       clearTimeout(this._waitTimer);
       this._stalledTimer = null;
       this._waitTimer = null;
-      this._reconnecting = false;
+      if (this._reconnecting) {
+        this._reconnecting = false;
+        this._emitStatus('recovered');
+      }
+      this._failCount = 0;
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -73,6 +85,7 @@ const AudioManager = {
     this._stalledTimer = null;
     this._waitTimer = null;
     this._reconnecting = false;
+    this._failCount = 0;
 
     this.initAudioContext();
 
@@ -119,14 +132,25 @@ const AudioManager = {
     // and leaves the AudioContext in a broken state.
     if (this._reconnecting || !this.currentChannel) return;
     this._reconnecting = true;
+    this._failCount++;
     clearTimeout(this._stalledTimer);
     clearTimeout(this._waitTimer);
     console.warn('Stream reconnecting...');
+
+    this._emitStatus(this._failCount >= 3 ? 'failed' : 'reconnecting');
 
     this.audioEl.src = DiscoAPI.getStreamUrl(this.currentChannel);
     this.audioEl.play()
       .catch(console.error)
       .finally(() => { this._reconnecting = false; });
+  },
+
+  retryNow() {
+    this._failCount = 0;
+    this._reconnecting = false;
+    if (this.currentChannel) {
+      this._reconnect();
+    }
   },
 
   getAnalyser() {

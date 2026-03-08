@@ -16,6 +16,7 @@ const config = require('./lib/config');
 const library = require('./lib/library');
 const playlistManager = require('./lib/playlist-manager');
 const channelPlaylists = require('./lib/channel-playlists');
+const EventStats = require('./lib/event-stats');
 const { migrate } = require('./lib/migrate');
 
 const conf = config.get();
@@ -24,6 +25,9 @@ const CHANNELS = conf.channels.map(c => c.id);
 
 // Spotify track metadata per channel — set by librespot track_changed event hook
 const spotifyMeta = {};
+
+// Event stats collector
+const eventStats = new EventStats(CHANNELS);
 
 const app = express();
 const server = http.createServer(app);
@@ -304,6 +308,22 @@ function requireAdmin(req, res, next) {
   }
   return res.status(401).json({ ok: false, error: 'Unauthorized' });
 }
+
+// --- GET /api/admin/event-stats --- event stats summary
+app.get('/api/admin/event-stats', requireAdmin, (req, res) => {
+  try {
+    const summary = eventStats.getSummary();
+    res.json({ ok: true, ...summary });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- POST /api/admin/event-stats/reset --- reset stats for new event
+app.post('/api/admin/event-stats/reset', requireAdmin, (req, res) => {
+  eventStats.reset();
+  res.json({ ok: true });
+});
 
 // --- POST /api/admin/login ---
 app.post('/api/admin/login', (req, res) => {
@@ -937,7 +957,7 @@ async function broadcastNowPlaying() {
       }
     }
 
-    // Update play history when track changes
+    // Update play history + event stats when track changes
     for (const ch of channels) {
       const filename = ch.nowPlaying?.filename || '';
       const title = ch.nowPlaying?.title || '';
@@ -963,6 +983,8 @@ async function broadcastNowPlaying() {
         if (trackHistory[ch.id].length > MAX_TRACK_HISTORY) trackHistory[ch.id].shift();
         saveHistoryDebounced();
       }
+      // Record all track changes (including non-file sources like BT/Spotify)
+      eventStats.recordTrackChange(ch.id, ch.nowPlaying);
     }
 
     // Skip WS broadcast if nobody is listening
@@ -991,6 +1013,18 @@ async function broadcastNowPlaying() {
 }
 
 setInterval(broadcastNowPlaying, WS_INTERVAL_MS);
+
+// Wire event stats collector into the broadcast loop
+eventStats.setListenerSource(() => {
+  const wsListeners = {};
+  for (const ws of wss.clients) {
+    if (ws.readyState === ws.OPEN && ws.channel) {
+      wsListeners[ws.channel] = (wsListeners[ws.channel] || 0) + 1;
+    }
+  }
+  return wsListeners;
+});
+eventStats.start();
 
 wss.on('connection', (ws) => {
   ws.channel = null;
