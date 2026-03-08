@@ -20,21 +20,28 @@ USB_HCI=$(hciconfig -a | awk -v mac="$USB_DONGLE_MAC" '
 ')
 
 if [ -z "$USB_HCI" ]; then
-  echo "USB BT dongle ($USB_DONGLE_MAC) not found — is it plugged in?" >&2
-  exit 1
+  echo "USB BT dongle ($USB_DONGLE_MAC) not found — falling back to built-in BT" >&2
+  # Use whatever adapter is available (hci0 on Pi 5 = built-in)
+  BT_MAC=$(hciconfig -a | awk '/BD Address:/ { print $3; exit }')
+  if [ -z "$BT_MAC" ]; then
+    echo "No BT adapter found at all!" >&2
+    exit 1
+  fi
+  echo "Using built-in BT adapter ($BT_MAC)"
+else
+  echo "Found USB dongle at $USB_HCI"
+  BT_MAC="$USB_DONGLE_MAC"
+
+  # Down all adapters except the USB dongle
+  for i in 0 1; do
+    [ "hci$i" != "$USB_HCI" ] && hciconfig "hci$i" down 2>/dev/null || true
+  done
 fi
-
-echo "Found USB dongle at $USB_HCI"
-
-# Down all adapters except the USB dongle
-for i in 0 1; do
-  [ "hci$i" != "$USB_HCI" ] && hciconfig "hci$i" down 2>/dev/null || true
-done
 
 sleep 2
 
 bluetoothctl << BTEOF
-select $USB_DONGLE_MAC
+select $BT_MAC
 power on
 system-alias SilentDisco
 discoverable on

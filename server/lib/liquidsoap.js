@@ -6,6 +6,7 @@ const TELNET_HOST = '127.0.0.1';
 const TELNET_PORT = 1234;
 const COMMAND_TIMEOUT_MS = 5000;
 const RECONNECT_DELAY_MS = 3000;
+const KEEPALIVE_INTERVAL_MS = 15000;
 
 class LiquidsoapClient {
   constructor() {
@@ -14,11 +15,13 @@ class LiquidsoapClient {
     this._buffer = '';
     this._pending = [];
     this._reconnTimer = null;
+    this._keepaliveTimer = null;
     this._connect();
   }
 
   _connect() {
     if (this._socket) this._socket.destroy();
+    if (this._keepaliveTimer) { clearInterval(this._keepaliveTimer); this._keepaliveTimer = null; }
 
     this._socket = new net.Socket();
     this._socket.setEncoding('utf8');
@@ -28,6 +31,12 @@ class LiquidsoapClient {
       this._connected = true;
       this._buffer = '';
       console.log('[liquidsoap] connected');
+      // Send periodic keepalive to prevent Liquidsoap telnet timeout
+      this._keepaliveTimer = setInterval(() => {
+        if (this._connected && this._pending.length === 0) {
+          this.send('version').catch(() => {});
+        }
+      }, KEEPALIVE_INTERVAL_MS);
     });
 
     this._socket.on('data', (data) => {
@@ -37,6 +46,7 @@ class LiquidsoapClient {
 
     this._socket.on('close', () => {
       this._connected = false;
+      if (this._keepaliveTimer) { clearInterval(this._keepaliveTimer); this._keepaliveTimer = null; }
       console.warn('[liquidsoap] disconnected, reconnecting...');
       this._rejectAll(new Error('Liquidsoap disconnected'));
       this._scheduleReconnect();

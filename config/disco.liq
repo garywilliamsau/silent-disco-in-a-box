@@ -14,6 +14,7 @@ log.level.set(3)
 settings.server.telnet.set(true)
 settings.server.telnet.bind_addr.set("127.0.0.1")
 settings.server.telnet.port.set(1234)
+settings.server.timeout.set(120.)  # prevent idle disconnect (default 30s)
 
 # Audio settings
 settings.frame.audio.samplerate.set(44100)

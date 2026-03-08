@@ -348,6 +348,34 @@ const trackHistory = {};
 CHANNELS.forEach(ch => { trackHistory[ch] = []; });
 const MAX_TRACK_HISTORY = 200;
 
+// Persist history to disk so it survives restarts
+const HISTORY_PATH = path.join(path.dirname(conf.library?.path || '/home/silentdisco/music/library'), 'track-history.json');
+let _historySaveTimer = null;
+
+function loadHistory() {
+  try {
+    const data = JSON.parse(fs.readFileSync(HISTORY_PATH, 'utf8'));
+    for (const ch of CHANNELS) {
+      if (Array.isArray(data[ch])) trackHistory[ch] = data[ch].slice(-MAX_TRACK_HISTORY);
+    }
+    console.log(`[history] loaded from ${HISTORY_PATH}`);
+  } catch { /* first run or corrupt — start fresh */ }
+}
+
+function saveHistoryDebounced() {
+  if (_historySaveTimer) return;
+  _historySaveTimer = setTimeout(() => {
+    _historySaveTimer = null;
+    try {
+      fs.writeFileSync(HISTORY_PATH, JSON.stringify(trackHistory, null, 2));
+    } catch (err) {
+      console.error('[history] save failed:', err.message);
+    }
+  }, 10000); // write at most every 10 seconds
+}
+
+loadHistory();
+
 // --- POST /api/channels/:id/upload ---
 app.post('/api/channels/:id/upload', requireAdmin, (req, res, next) => {
   const { id } = req.params;
@@ -878,8 +906,6 @@ const WS_INTERVAL_MS = 3000;
 const lastKnownFile = {};
 
 async function broadcastNowPlaying() {
-  if (wss.clients.size === 0) return;
-
   try {
     const [channels, stats] = await Promise.all([
       Promise.all(CHANNELS.map(async (ch) => ({
@@ -912,24 +938,34 @@ async function broadcastNowPlaying() {
 
     // Update play history when track changes
     for (const ch of channels) {
-      const filename = ch.nowPlaying?.filename;
-      if (filename && filename !== lastKnownFile[ch.id]) {
+      const filename = ch.nowPlaying?.filename || '';
+      const title = ch.nowPlaying?.title || '';
+      // Detect change by filename (playlist tracks) or title (BT/Spotify/Line-In)
+      const trackKey = filename || title;
+      if (trackKey && trackKey !== lastKnownFile[ch.id]) {
         if (lastKnownFile[ch.id]) {
-          playHistory[ch.id].push(lastKnownFile[ch.id]);
-          if (playHistory[ch.id].length > 10) playHistory[ch.id].shift();
+          // Push previous filename for "previous track" feature (only real files)
+          if (filename) {
+            playHistory[ch.id].push(filename);
+            if (playHistory[ch.id].length > 10) playHistory[ch.id].shift();
+          }
         }
-        lastKnownFile[ch.id] = filename;
+        lastKnownFile[ch.id] = trackKey;
 
-        // Also record in rich track history
+        // Record in rich track history
         trackHistory[ch.id].push({
-          title: ch.nowPlaying?.title || '',
+          title: title,
           artist: ch.nowPlaying?.artist || '',
           filename: filename,
           playedAt: new Date().toISOString(),
         });
         if (trackHistory[ch.id].length > MAX_TRACK_HISTORY) trackHistory[ch.id].shift();
+        saveHistoryDebounced();
       }
     }
+
+    // Skip WS broadcast if nobody is listening
+    if (wss.clients.size === 0) return;
 
     // Count WebSocket clients per channel (exact, no Icecast double-connection noise)
     const wsListeners = {};
