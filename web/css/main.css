@@ -329,3 +329,106 @@ html, body {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+.hidden { display: none !important; }
+
+/* --- Admin Overlay (/?admin=1) --- */
+.admin-overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.admin-overlay-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  padding-bottom: calc(0.5rem + var(--safe-bottom));
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  pointer-events: auto;
+}
+
+.admin-overlay-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.admin-stat-total {
+  font-weight: 600;
+  color: #fff;
+  margin-right: 0.25rem;
+}
+
+.admin-stat-ch {
+  color: var(--dot-color);
+  font-weight: 500;
+}
+
+.admin-skip-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  padding: 0.35rem 1rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.admin-skip-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.admin-login-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.admin-login-box {
+  background: #1a1a24;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  min-width: 250px;
+}
+
+.admin-login-box p {
+  margin: 0 0 1rem 0;
+  font-weight: 600;
+}
+
+.admin-login-box input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+  box-sizing: border-box;
+}
+
+.admin-login-box button {
+  background: #2979ff;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 2rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+}

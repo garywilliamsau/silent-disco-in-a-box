@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0a0a0f">
   <title>Silent Disco</title>
-  <link rel="stylesheet" href="/css/main.css?v=4">
+  <link rel="stylesheet" href="/css/main.css?v=5">
 </head>
 <body>
 
@@ -42,12 +42,34 @@
       <div class="channel-dots" id="channelDots"></div>
     </div>
     <audio id="audioPlayer" preload="none"></audio>
+
+    <!-- Admin overlay (visible only with ?admin=1) -->
+    <div id="adminOverlay" class="admin-overlay hidden">
+      <div class="admin-overlay-bar">
+        <div class="admin-overlay-stats">
+          <span id="adminTotalListeners" class="admin-stat-total">0 listeners</span>
+          <span class="admin-stat-ch" style="--dot-color:#ff1744">R:<span id="adminCountRed">0</span></span>
+          <span class="admin-stat-ch" style="--dot-color:#00e676">G:<span id="adminCountGreen">0</span></span>
+          <span class="admin-stat-ch" style="--dot-color:#2979ff">B:<span id="adminCountBlue">0</span></span>
+        </div>
+        <button id="adminSkipBtn" class="admin-skip-btn hidden" onclick="App.adminSkip()">Skip</button>
+      </div>
+    </div>
+
+    <!-- Admin login prompt -->
+    <div id="adminLoginPrompt" class="admin-login-prompt hidden">
+      <div class="admin-login-box">
+        <p>Admin access</p>
+        <input type="password" id="adminPasswordInput" placeholder="Password" autocomplete="off">
+        <button id="adminLoginBtn" onclick="App.adminLogin()">OK</button>
+      </div>
+    </div>
   </div>
 
   <script src="/js/api.js?v=7"></script>
   <script src="/js/audio.js?v=9"></script>
   <script src="/js/visualizer.js?v=9"></script>
   <script src="/js/mediasession.js?v=3"></script>
-  <script src="/js/app.js?v=14"></script>
+  <script src="/js/app.js?v=15"></script>
 </body>
 </html>

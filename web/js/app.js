@@ -6,6 +6,8 @@ const App = {
   currentChannel: null,
 
   _toastTimer: null,
+  _adminMode: false,
+  _adminToken: null,
 
   async init() {
     AudioManager.init();
@@ -50,6 +52,18 @@ const App = {
         this.selectChannel(next);
       },
     });
+
+    // Admin overlay mode
+    if (new URLSearchParams(location.search).has('admin')) {
+      this._adminToken = localStorage.getItem('adminToken');
+      if (this._adminToken) {
+        this._adminMode = true;
+        document.getElementById('adminOverlay').classList.remove('hidden');
+        document.querySelector('.player-bar').style.marginBottom = '44px';
+      } else {
+        document.getElementById('adminLoginPrompt').classList.remove('hidden');
+      }
+    }
   },
 
   showScreen(screenId) {
@@ -221,6 +235,64 @@ const App = {
           `${ch.listeners || 0} listening`;
       }
     }
+
+    // Update admin overlay
+    if (this._adminMode) {
+      let total = 0;
+      for (const c of channels) {
+        total += c.listeners || 0;
+        const el = document.getElementById('adminCount' + c.id.charAt(0).toUpperCase() + c.id.slice(1));
+        if (el) el.textContent = c.listeners || 0;
+      }
+      document.getElementById('adminTotalListeners').textContent = `${total} listeners`;
+
+      // Show skip only for playlist mode (no alsa, bt, or spotify)
+      const current = channels.find(c => c.id === this.currentChannel);
+      const skipBtn = document.getElementById('adminSkipBtn');
+      if (current && !current.alsaMode && !current.bluetoothMode && !current.spotifyMode) {
+        skipBtn.classList.remove('hidden');
+      } else {
+        skipBtn.classList.add('hidden');
+      }
+    }
+  },
+
+  async adminLogin() {
+    const pw = document.getElementById('adminPasswordInput').value;
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this._adminToken = pw;
+        this._adminMode = true;
+        localStorage.setItem('adminToken', pw);
+        document.getElementById('adminLoginPrompt').classList.add('hidden');
+        document.getElementById('adminOverlay').classList.remove('hidden');
+        document.querySelector('.player-bar').style.marginBottom = '44px';
+      } else {
+        document.getElementById('adminPasswordInput').value = '';
+        document.getElementById('adminPasswordInput').placeholder = 'Wrong password';
+      }
+    } catch {
+      document.getElementById('adminPasswordInput').placeholder = 'Connection error';
+    }
+  },
+
+  async adminSkip() {
+    if (!this.currentChannel || !this._adminToken) return;
+    try {
+      await fetch(`/api/channels/${this.currentChannel}/skip`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this._adminToken}`,
+        },
+      });
+    } catch { /* ignore */ }
   },
 };
 
