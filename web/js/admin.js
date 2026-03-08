@@ -1386,66 +1386,76 @@ const Admin = {
       if (!data.ok) return;
       const container = document.getElementById('historyPanels');
 
-      // Merge all channel entries into a unified timeline
-      const allEvents = [];
+      // Build per-channel track blocks with start/end times
+      const channelBlocks = {};
       for (const ch of this.channels) {
-        for (const e of (data.history[ch] || [])) {
-          allEvents.push({ ...e, channel: ch });
+        const entries = data.history[ch] || [];
+        const blocks = [];
+        for (let i = 0; i < entries.length; i++) {
+          const start = new Date(entries[i].playedAt).getTime();
+          const end = (i + 1 < entries.length) ? new Date(entries[i + 1].playedAt).getTime() : Date.now();
+          blocks.push({ title: entries[i].title, artist: entries[i].artist, start, end });
         }
-      }
-      // Sort by time descending (newest first)
-      allEvents.sort((a, b) => new Date(b.playedAt) - new Date(a.playedAt));
-
-      // Build timeline rows: each unique timestamp gets a row with all channels
-      // Track what's playing on each channel at each point
-      const rows = [];
-      const currentTrack = {}; // what's playing per channel right now (scanning backwards)
-
-      for (const ev of allEvents) {
-        const time = this.formatTime(ev.playedAt);
-        // Find or create row for this timestamp
-        let row = rows.find(r => r.time === time);
-        if (!row) {
-          // Snapshot current state of all channels at this time
-          row = { time, channels: {} };
-          for (const ch of this.channels) {
-            row.channels[ch] = currentTrack[ch] || null;
-          }
-          rows.push(row);
-        }
-        // This event happened at this time on this channel
-        row.channels[ev.channel] = { title: ev.title, artist: ev.artist };
-        currentTrack[ev.channel] = { title: ev.title, artist: ev.artist };
+        channelBlocks[ch] = blocks;
       }
 
-      if (rows.length === 0) {
+      // Find global time range
+      let minTime = Infinity, maxTime = -Infinity;
+      for (const ch of this.channels) {
+        for (const b of channelBlocks[ch]) {
+          if (b.start < minTime) minTime = b.start;
+          if (b.end > maxTime) maxTime = b.end;
+        }
+      }
+
+      if (minTime === Infinity) {
         container.innerHTML = '<div class="track-list-empty">No history yet</div>';
         return;
       }
 
+      const totalMs = maxTime - minTime;
+      const PX_PER_MIN = 40; // pixels per minute
+      const totalHeight = Math.max(200, (totalMs / 60000) * PX_PER_MIN);
+
+      // Generate time markers every 5 minutes
+      const markerInterval = 5 * 60000;
+      const firstMarker = Math.ceil(minTime / markerInterval) * markerInterval;
+      let markers = '';
+      for (let t = firstMarker; t <= maxTime; t += markerInterval) {
+        const topPx = ((maxTime - t) / totalMs) * totalHeight;
+        const d = new Date(t);
+        const label = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        markers += `<div class="history-marker" style="top:${topPx}px"><span>${label}</span></div>`;
+      }
+
       container.innerHTML = `
-        <div class="history-timeline">
-          <div class="history-header">
-            <div class="history-time-col">Time</div>
+        <div class="history-gantt">
+          <div class="history-gantt-header">
             ${this.channels.map(ch => `
-              <div class="history-ch-col">
+              <div class="history-gantt-ch-label">
                 <span class="panel-dot" style="background:${this.channelColors[ch]}"></span>
                 ${this.channelNames[ch]}
               </div>
             `).join('')}
           </div>
-          ${rows.map(row => `
-            <div class="history-row">
-              <div class="history-time-col">${row.time}</div>
-              ${this.channels.map(ch => {
-                const t = row.channels[ch];
-                return `<div class="history-ch-col${t ? '' : ' empty'}">
-                  ${t ? `<div class="track-name">${this.escapeHtml(t.title || 'Unknown')}</div>
-                         <div class="track-artist">${this.escapeHtml(t.artist || '')}</div>` : '—'}
-                </div>`;
-              }).join('')}
-            </div>
-          `).join('')}
+          <div class="history-gantt-body" style="height:${totalHeight}px">
+            <div class="history-gantt-markers">${markers}</div>
+            ${this.channels.map(ch => {
+              const blocks = channelBlocks[ch];
+              return `<div class="history-gantt-lane">
+                ${blocks.map((b, idx) => {
+                  const blockH = Math.max(22, ((b.end - b.start) / totalMs) * totalHeight - 4);
+                  const topPx = ((maxTime - b.end) / totalMs) * totalHeight;
+                  const durationMin = Math.round((b.end - b.start) / 60000);
+                  const zIdx = blocks.length - idx;
+                  return `<div class="history-block" style="top:${topPx}px;height:${blockH}px;z-index:${zIdx};border-color:${this.channelColors[ch]};--ch-color:${this.channelColors[ch]}" title="${this.escapeAttr(b.title)} - ${this.escapeAttr(b.artist)} (${durationMin}m)">
+                    <div class="history-block-title">${this.escapeHtml(b.title || 'Unknown')}</div>
+                    <div class="history-block-artist">${this.escapeHtml(b.artist || '')}</div>
+                  </div>`;
+                }).join('')}
+              </div>`;
+            }).join('')}
+          </div>
         </div>
       `;
     } catch (e) { console.error('History load failed:', e); }

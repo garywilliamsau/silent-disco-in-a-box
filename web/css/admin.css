@@ -715,7 +715,7 @@ body {
   padding-left: 0.5rem;
 }
 
-/* History timeline */
+/* History Gantt chart */
 .history-section {
   background: var(--card);
   border: 1px solid var(--border);
@@ -723,64 +723,97 @@ body {
   padding: 1.25rem;
 }
 
-.history-timeline {
-  overflow-x: auto;
-  margin-top: 0.5rem;
-}
-
-.history-header, .history-row {
+.history-gantt-header {
   display: grid;
-  grid-template-columns: 60px repeat(3, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.5rem;
-  align-items: start;
+  padding-left: 55px;
+  margin-bottom: 0.5rem;
 }
 
-.history-header {
+.history-gantt-ch-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   font-weight: 600;
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--dim);
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 0.25rem;
-  position: sticky;
+}
+
+.history-gantt-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  padding-left: 55px;
+  overflow-y: auto;
+  max-height: 65vh;
+}
+
+.history-gantt-markers {
+  position: absolute;
   top: 0;
-  background: var(--card);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
 }
 
-.history-header .history-ch-col {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
+.history-marker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
 }
 
-.history-row {
-  padding: 0.4rem 0;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-  font-size: 0.82rem;
-}
-
-.history-time-col {
+.history-marker span {
+  position: absolute;
+  left: 0;
+  top: -0.5em;
+  font-size: 0.68rem;
   color: var(--dim);
+  width: 50px;
+  text-align: right;
+  padding-right: 8px;
+}
+
+.history-gantt-lane {
+  position: relative;
+  min-height: 100%;
+}
+
+.history-block {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  border-left: 3px solid;
+  border-radius: 4px;
+  padding: 2px 6px;
+  overflow: hidden;
+  box-sizing: border-box;
+  z-index: 1;
+  /* Opaque background so blocks fully cover anything behind them */
+  background: color-mix(in srgb, var(--ch-color) 10%, var(--card));
+}
+
+.history-block-title {
   font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.15;
   white-space: nowrap;
-  padding-top: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.history-ch-col .track-name {
-  font-size: 0.82rem;
-  line-height: 1.2;
-}
-
-.history-ch-col .track-artist {
-  font-size: 0.72rem;
+.history-block-artist {
+  font-size: 0.65rem;
   color: var(--dim);
-}
-
-.history-ch-col.empty {
-  color: rgba(255,255,255,0.15);
-  font-size: 0.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.15;
 }
 
 /* Schedule */
