@@ -288,6 +288,43 @@ html, body {
   box-shadow: 0 0 25px rgba(243, 156, 18, 0.5);
 }
 
+/* Stream connection toast */
+.stream-toast {
+  position: absolute;
+  top: env(safe-area-inset-top, 0px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  text-align: center;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transform: translateY(-100%);
+  transition: transform 0.3s ease, background 0.3s ease;
+  pointer-events: none;
+}
+
+.stream-toast.visible {
+  transform: translateY(0);
+}
+
+.stream-toast.reconnecting {
+  background: rgba(255, 152, 0, 0.9);
+  color: #fff;
+}
+
+.stream-toast.failed {
+  background: rgba(255, 23, 68, 0.9);
+  color: #fff;
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.stream-toast.recovered {
+  background: rgba(0, 230, 118, 0.85);
+  color: #fff;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }

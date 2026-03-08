@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Silent Disco Admin</title>
-  <link rel="stylesheet" href="/css/admin.css?v=7">
+  <link rel="stylesheet" href="/css/admin.css?v=8">
 </head>
 <body>
 
@@ -33,6 +33,7 @@
       <button class="tab-btn active" onclick="Admin.switchTab('channels')">Channels</button>
       <button class="tab-btn" onclick="Admin.switchTab('library')">Library</button>
       <button class="tab-btn" onclick="Admin.switchTab('playlists')">Playlists</button>
+      <button class="tab-btn" onclick="Admin.switchTab('stats')">Stats</button>
     </div>
 
     <!-- Channels Tab -->
@@ -79,6 +80,58 @@
       <input type="file" id="libraryFileInput" multiple accept=".mp3,.m4a,.ogg,.flac" class="hidden">
     </div>
 
+    <!-- Stats Tab -->
+    <div id="tab-stats" class="tab-content">
+      <div class="stats-section">
+        <div class="stats-summary" id="statsSummary">
+          <div class="stats-card">
+            <div class="stats-value" id="statPeakListeners">-</div>
+            <div class="stats-label">Peak Listeners</div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-value" id="statListenerHours">-</div>
+            <div class="stats-label">Listener Hours</div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-value" id="statTopChannel">-</div>
+            <div class="stats-label">Top Channel</div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-value" id="statDuration">-</div>
+            <div class="stats-label">Event Duration</div>
+          </div>
+        </div>
+
+        <div class="stats-panel">
+          <h3>Peak Time</h3>
+          <div id="statPeakTime" class="stats-detail">-</div>
+        </div>
+
+        <div class="stats-panel">
+          <h3>Channel Breakdown</h3>
+          <div id="statChannelBreakdown" class="stats-detail"></div>
+        </div>
+
+        <div class="stats-panel">
+          <h3>Listeners Over Time</h3>
+          <div class="stats-chart-container">
+            <canvas id="statsChart" width="800" height="200"></canvas>
+          </div>
+        </div>
+
+        <div class="stats-panel">
+          <h3>Most Played Tracks</h3>
+          <div class="track-list" id="statTopTracks">
+            <div class="track-list-empty">No data yet</div>
+          </div>
+        </div>
+
+        <div class="stats-actions">
+          <button class="btn btn-danger" onclick="Admin.resetEventStats()">Reset Stats (New Event)</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Playlists Tab -->
     <div id="tab-playlists" class="tab-content">
       <div class="playlists-section">
@@ -114,6 +167,6 @@
   </div>
 
   <script src="/js/talkover.js?v=2"></script>
-  <script src="/js/admin.js?v=8"></script>
+  <script src="/js/admin.js?v=9"></script>
 </body>
 </html>

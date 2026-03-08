@@ -98,6 +98,7 @@ const Admin = {
 
     if (tabName === 'library') this.loadLibrary();
     if (tabName === 'playlists') this.loadPlaylists();
+    if (tabName === 'stats') this.loadEventStats();
   },
 
   // === Channel Panels ===
@@ -1115,6 +1116,190 @@ const Admin = {
       });
     } catch (e) {
       console.error('Talkover toggle failed:', e);
+    }
+  },
+
+  // --- Event Stats ---
+
+  async loadEventStats() {
+    try {
+      const res = await fetch('/api/admin/event-stats', {
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      const data = await res.json();
+      if (data.ok) this.renderEventStats(data);
+    } catch (e) {
+      console.error('Failed to load event stats:', e);
+    }
+  },
+
+  renderEventStats(data) {
+    document.getElementById('statPeakListeners').textContent = data.peakListeners || 0;
+    document.getElementById('statListenerHours').textContent = data.listenerHours || 0;
+    document.getElementById('statTopChannel').textContent =
+      data.peakChannel ? (this.channelNames[data.peakChannel] || data.peakChannel) : '-';
+
+    if (data.duration > 0) {
+      const hrs = Math.floor(data.duration / 60);
+      const mins = data.duration % 60;
+      document.getElementById('statDuration').textContent =
+        hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+    } else {
+      document.getElementById('statDuration').textContent = '-';
+    }
+
+    // Peak time
+    if (data.peakTime) {
+      const d = new Date(data.peakTime);
+      document.getElementById('statPeakTime').textContent =
+        d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
+        ` (${data.peakListeners} listeners across all channels)`;
+    } else {
+      document.getElementById('statPeakTime').textContent = 'No data yet';
+    }
+
+    // Channel breakdown bars
+    const breakdownEl = document.getElementById('statChannelBreakdown');
+    if (data.channelStats && Object.keys(data.channelStats).length > 0) {
+      let maxMinutes = 0;
+      for (const ch of this.channels) {
+        const cs = data.channelStats[ch];
+        if (cs && cs.listenerMinutes > maxMinutes) maxMinutes = cs.listenerMinutes;
+      }
+      breakdownEl.innerHTML = this.channels.map(ch => {
+        const cs = data.channelStats[ch] || { listenerMinutes: 0, peakListeners: 0 };
+        const pct = maxMinutes > 0 ? (cs.listenerMinutes / maxMinutes * 100) : 0;
+        const hrs = (cs.listenerMinutes / 60).toFixed(1);
+        return `
+          <div class="channel-bar">
+            <span class="channel-bar-label" style="color:${this.channelColors[ch]}">${this.channelNames[ch]}</span>
+            <div class="channel-bar-fill" style="width:${pct}%;background:${this.channelColors[ch]}"></div>
+            <span class="channel-bar-value">${hrs}h &middot; peak ${cs.peakListeners}</span>
+          </div>
+        `;
+      }).join('');
+    } else {
+      breakdownEl.innerHTML = '<span>No data yet</span>';
+    }
+
+    // Timeline chart
+    this.renderStatsChart(data.timeline || []);
+
+    // Top tracks
+    const tracksEl = document.getElementById('statTopTracks');
+    if (data.topTracks && data.topTracks.length > 0) {
+      tracksEl.innerHTML = data.topTracks.map((t, i) => `
+        <div class="track-item">
+          <div class="track-meta">
+            <div class="track-name">${i + 1}. ${this.escapeHtml(t.title)}</div>
+            <div class="track-artist">${this.escapeHtml(t.artist || '')} &middot; ${t.plays} play${t.plays !== 1 ? 's' : ''}</div>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      tracksEl.innerHTML = '<div class="track-list-empty">No tracks played yet</div>';
+    }
+  },
+
+  renderStatsChart(timeline) {
+    const canvas = document.getElementById('statsChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = canvas.offsetWidth * dpr;
+    canvas.height = 200 * dpr;
+    ctx.scale(dpr, dpr);
+
+    const w = canvas.offsetWidth;
+    const h = 200;
+    const pad = { top: 10, right: 10, bottom: 25, left: 35 };
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (timeline.length < 2) {
+      ctx.fillStyle = '#888';
+      ctx.font = '13px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Not enough data yet', w / 2, h / 2);
+      return;
+    }
+
+    // Find max
+    let maxVal = 1;
+    for (const t of timeline) {
+      if (t.total > maxVal) maxVal = t.total;
+    }
+    maxVal = Math.ceil(maxVal * 1.1);
+
+    // Grid lines
+    ctx.strokeStyle = '#2a2a38';
+    ctx.lineWidth = 0.5;
+    const gridSteps = 4;
+    for (let i = 0; i <= gridSteps; i++) {
+      const y = pad.top + (plotH * i / gridSteps);
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(w - pad.right, y);
+      ctx.stroke();
+
+      // Y-axis labels
+      ctx.fillStyle = '#888';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(Math.round(maxVal - (maxVal * i / gridSteps)), pad.left - 5, y + 3);
+    }
+
+    // X-axis time labels
+    const timeLabels = 5;
+    ctx.textAlign = 'center';
+    for (let i = 0; i < timeLabels; i++) {
+      const idx = Math.floor(i * (timeline.length - 1) / (timeLabels - 1));
+      const x = pad.left + (idx / (timeline.length - 1)) * plotW;
+      const d = new Date(timeline[idx].ts);
+      ctx.fillText(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), x, h - 5);
+    }
+
+    // Draw area + line per channel (stacked)
+    const channelOrder = [...this.channels].reverse();
+    for (const ch of channelOrder) {
+      ctx.beginPath();
+      ctx.moveTo(pad.left, pad.top + plotH);
+
+      for (let i = 0; i < timeline.length; i++) {
+        const x = pad.left + (i / (timeline.length - 1)) * plotW;
+        const val = timeline[i][ch] || 0;
+        const y = pad.top + plotH - (val / maxVal) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+
+      ctx.strokeStyle = this.channelColors[ch];
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Fill area
+      const lastX = pad.left + plotW;
+      ctx.lineTo(lastX, pad.top + plotH);
+      ctx.lineTo(pad.left, pad.top + plotH);
+      ctx.closePath();
+      ctx.fillStyle = this.channelColors[ch] + '20';
+      ctx.fill();
+    }
+  },
+
+  async resetEventStats() {
+    if (!confirm('Reset all event stats? This cannot be undone.')) return;
+    try {
+      await fetch('/api/admin/event-stats/reset', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      this.loadEventStats();
+    } catch (e) {
+      console.error('Reset stats failed:', e);
     }
   },
 

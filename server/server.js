@@ -16,6 +16,7 @@ const config = require('./lib/config');
 const library = require('./lib/library');
 const playlistManager = require('./lib/playlist-manager');
 const channelPlaylists = require('./lib/channel-playlists');
+const EventStats = require('./lib/event-stats');
 const { migrate } = require('./lib/migrate');
 
 const conf = config.get();
@@ -24,6 +25,9 @@ const CHANNELS = conf.channels.map(c => c.id);
 
 // Spotify track metadata per channel — set by librespot track_changed event hook
 const spotifyMeta = {};
+
+// Event stats collector
+const eventStats = new EventStats(CHANNELS);
 
 const app = express();
 const server = http.createServer(app);
@@ -293,6 +297,31 @@ app.get('/api/stats', async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+// --- GET /api/admin/event-stats --- event stats summary
+app.get('/api/admin/event-stats', (req, res) => {
+  // Auth check inline (requireAdmin not defined yet at this point in file)
+  const auth = req.headers.authorization;
+  if (!auth || auth !== `Bearer ${conf.admin.password}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  try {
+    const summary = eventStats.getSummary();
+    res.json({ ok: true, ...summary });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- POST /api/admin/event-stats/reset --- reset stats for new event
+app.post('/api/admin/event-stats/reset', (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth || auth !== `Bearer ${conf.admin.password}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  eventStats.reset();
+  res.json({ ok: true });
 });
 
 // --- Admin auth middleware ---
@@ -793,7 +822,7 @@ async function broadcastNowPlaying() {
       }
     }
 
-    // Update play history when track changes
+    // Update play history + event stats when track changes
     for (const ch of channels) {
       const filename = ch.nowPlaying?.filename;
       if (filename && filename !== lastKnownFile[ch.id]) {
@@ -803,6 +832,8 @@ async function broadcastNowPlaying() {
         }
         lastKnownFile[ch.id] = filename;
       }
+      // Record all track changes (including non-file sources like BT/Spotify)
+      eventStats.recordTrackChange(ch.id, ch.nowPlaying);
     }
 
     // Count WebSocket clients per channel (exact, no Icecast double-connection noise)
@@ -828,6 +859,18 @@ async function broadcastNowPlaying() {
 }
 
 setInterval(broadcastNowPlaying, WS_INTERVAL_MS);
+
+// Wire event stats collector into the broadcast loop
+eventStats.setListenerSource(() => {
+  const wsListeners = {};
+  for (const ws of wss.clients) {
+    if (ws.readyState === ws.OPEN && ws.channel) {
+      wsListeners[ws.channel] = (wsListeners[ws.channel] || 0) + 1;
+    }
+  }
+  return wsListeners;
+});
+eventStats.start();
 
 wss.on('connection', (ws) => {
   ws.channel = null;
