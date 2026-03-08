@@ -298,10 +298,11 @@ app.get('/api/stats', async (req, res) => {
 // --- Admin auth middleware ---
 function requireAdmin(req, res, next) {
   const auth = req.headers.authorization;
-  if (!auth || auth !== `Bearer ${conf.admin.password}`) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  const queryToken = req.query.token;
+  if (auth === `Bearer ${conf.admin.password}` || queryToken === conf.admin.password) {
+    return next();
   }
-  next();
+  return res.status(401).json({ ok: false, error: 'Unauthorized' });
 }
 
 // --- POST /api/admin/login ---

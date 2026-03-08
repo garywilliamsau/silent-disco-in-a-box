@@ -1601,9 +1601,9 @@ const Admin = {
     // Stop any other preview
     this.stopPreview();
 
-    const audio = new Audio(`/api/library/stream/${encodeURIComponent(filename)}`);
+    const audio = new Audio(`/api/library/stream/${encodeURIComponent(filename)}?token=${encodeURIComponent(this.token)}`);
     audio.volume = 0.5;
-    audio.play().catch(() => {});
+    audio.play().catch(e => console.error('Preview play failed:', e));
     audio.addEventListener('ended', () => this.stopPreview());
 
     btn.innerHTML = '&#x25A0;'; // square = stop
