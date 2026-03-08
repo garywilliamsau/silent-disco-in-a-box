@@ -1447,7 +1447,7 @@ const Admin = {
                   const blockH = Math.max(22, ((b.end - b.start) / totalMs) * totalHeight - 4);
                   const topPx = ((maxTime - b.end) / totalMs) * totalHeight;
                   const durationMin = Math.round((b.end - b.start) / 60000);
-                  const zIdx = blocks.length - idx;
+                  const zIdx = idx + 1;
                   return `<div class="history-block" style="top:${topPx}px;height:${blockH}px;z-index:${zIdx};border-color:${this.channelColors[ch]};--ch-color:${this.channelColors[ch]}" title="${this.escapeAttr(b.title)} - ${this.escapeAttr(b.artist)} (${durationMin}m)">
                     <div class="history-block-title">${this.escapeHtml(b.title || 'Unknown')}</div>
                     <div class="history-block-artist">${this.escapeHtml(b.artist || '')}</div>
