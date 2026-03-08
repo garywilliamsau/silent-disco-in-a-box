@@ -10,6 +10,13 @@ const Admin = {
   trackData: {},    // { channelId: [tracks] }
   trackSort: {},    // { channelId: 'title'|'artist'|'recent' }
 
+  // Playlist/library state
+  libraryTracks: [],
+  playlists: [],
+  currentPlaylistId: null,
+  currentPlaylistData: null,
+  channelAssignments: {},  // { channelId: playlistId }
+
   init() {
     document.getElementById('loginBtn').addEventListener('click', () => this.login());
     document.getElementById('passwordInput').addEventListener('keydown', (e) => {
@@ -29,6 +36,13 @@ const Admin = {
     document.getElementById('fileInput').addEventListener('change', (e) => {
       if (this.uploadChannel && e.target.files.length > 0) {
         this.uploadFiles(this.uploadChannel, e.target.files);
+      }
+      e.target.value = '';
+    });
+
+    document.getElementById('libraryFileInput').addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        this.uploadToLibrary(e.target.files);
       }
       e.target.value = '';
     });
@@ -71,7 +85,22 @@ const Admin = {
     document.getElementById('dashScreen').classList.add('active');
     this.renderPanels();
     this.startPolling();
+    this.loadChannelAssignments();
   },
+
+  // === Tab switching ===
+
+  switchTab(tabName) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+    document.querySelector(`.tab-btn[onclick*="'${tabName}'"]`).classList.add('active');
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+
+    if (tabName === 'library') this.loadLibrary();
+    if (tabName === 'playlists') this.loadPlaylists();
+  },
+
+  // === Channel Panels ===
 
   renderPanels() {
     const container = document.getElementById('channelPanels');
@@ -103,6 +132,13 @@ const Admin = {
             <button class="btn btn-bt" id="bt-btn-${id}" onclick="Admin.toggleBluetooth('${id}')">Bluetooth</button>
             <button class="btn btn-spotify" id="spotify-btn-${id}" onclick="Admin.toggleSpotify('${id}')">Spotify</button>
           </div>
+        </div>
+
+        <div class="playlist-assign">
+          <label>Playlist:</label>
+          <select id="playlist-select-${id}" onchange="Admin.assignPlaylist('${id}', this.value)">
+            <option value="">-- None --</option>
+          </select>
         </div>
 
         <div class="tracks-section">
@@ -141,6 +177,475 @@ const Admin = {
     this.loadBluetoothStatus();
   },
 
+  // === Channel Playlist Assignment ===
+
+  async loadChannelAssignments() {
+    try {
+      const [playlistsRes, ...assignmentResults] = await Promise.all([
+        fetch('/api/playlists', { headers: { 'Authorization': `Bearer ${this.token}` } }),
+        ...this.channels.map(ch =>
+          fetch(`/api/channels/${ch}/playlist`, { headers: { 'Authorization': `Bearer ${this.token}` } })
+        ),
+      ]);
+
+      const playlistsData = await playlistsRes.json();
+      const playlists = playlistsData.ok ? playlistsData.playlists : [];
+
+      for (let i = 0; i < this.channels.length; i++) {
+        const chId = this.channels[i];
+        const data = await assignmentResults[i].json();
+        this.channelAssignments[chId] = data.ok ? data.playlistId : null;
+
+        const select = document.getElementById(`playlist-select-${chId}`);
+        if (select) {
+          select.innerHTML = '<option value="">-- None --</option>' +
+            playlists.map(pl =>
+              `<option value="${this.escapeAttr(pl.id)}" ${this.channelAssignments[chId] === pl.id ? 'selected' : ''}>${this.escapeHtml(pl.name)} (${pl.trackCount})</option>`
+            ).join('');
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load channel assignments:', e);
+    }
+  },
+
+  async assignPlaylist(channelId, playlistId) {
+    try {
+      await fetch(`/api/channels/${channelId}/playlist`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ playlistId: playlistId || null }),
+      });
+      this.channelAssignments[channelId] = playlistId || null;
+    } catch (e) {
+      console.error('Assign playlist failed:', e);
+    }
+  },
+
+  // === Library ===
+
+  async loadLibrary() {
+    try {
+      const res = await fetch('/api/library', {
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.libraryTracks = data.tracks;
+        this.renderLibrary(data.tracks);
+      }
+    } catch (e) {
+      console.error('Failed to load library:', e);
+    }
+  },
+
+  renderLibrary(tracks) {
+    const container = document.getElementById('libraryTrackList');
+    const statsEl = document.getElementById('libraryStats');
+
+    if (statsEl) {
+      const totalDuration = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+      const mins = Math.round(totalDuration / 60);
+      statsEl.textContent = `${tracks.length} tracks, ${mins} min total`;
+    }
+
+    if (!tracks || tracks.length === 0) {
+      container.innerHTML = '<div class="track-list-empty">No tracks in library — upload some music</div>';
+      return;
+    }
+
+    container.innerHTML = tracks.map(t => `
+      <div class="track-item" data-filename="${this.escapeAttr(t.filename)}" data-title="${this.escapeAttr(t.title || '')}" data-artist="${this.escapeAttr(t.artist || '')}">
+        <div class="track-meta">
+          <div class="track-name">${this.escapeHtml(t.title || t.filename)}</div>
+          <div class="track-artist">${this.escapeHtml(t.artist || '')}${t.duration ? ' &middot; ' + this.formatDuration(t.duration) : ''}</div>
+        </div>
+        <button class="track-delete" onclick="Admin.deleteFromLibrary('${this.escapeAttr(t.filename)}')" title="Delete">&#x2715;</button>
+      </div>
+    `).join('');
+  },
+
+  filterLibrary() {
+    const query = document.getElementById('librarySearch').value.toLowerCase();
+    const items = document.querySelectorAll('#libraryTrackList .track-item');
+    items.forEach(item => {
+      const title = (item.dataset.title || '').toLowerCase();
+      const artist = (item.dataset.artist || '').toLowerCase();
+      const filename = (item.dataset.filename || '').toLowerCase();
+      item.style.display = (title.includes(query) || artist.includes(query) || filename.includes(query)) ? '' : 'none';
+    });
+  },
+
+  setupLibraryUpload() {
+    const zone = document.getElementById('library-upload-zone');
+    if (!zone || zone.dataset.bound) return;
+    zone.dataset.bound = 'true';
+
+    zone.addEventListener('click', () => {
+      document.getElementById('libraryFileInput').click();
+    });
+
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.classList.add('drag-over');
+    });
+
+    zone.addEventListener('dragleave', () => {
+      zone.classList.remove('drag-over');
+    });
+
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length > 0) {
+        this.uploadToLibrary(e.dataTransfer.files);
+      }
+    });
+  },
+
+  uploadToLibrary(files) {
+    const zone = document.getElementById('library-upload-zone');
+    const progressBar = document.getElementById('library-upload-progress');
+    const progressFill = document.getElementById('library-progress-fill');
+
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+
+    zone.classList.add('uploading');
+    zone.textContent = `Uploading ${files.length} file${files.length > 1 ? 's' : ''}...`;
+    progressBar.classList.add('active');
+    progressFill.style.width = '0%';
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/library/upload');
+    xhr.setRequestHeader('Authorization', `Bearer ${this.token}`);
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        progressFill.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      zone.classList.remove('uploading');
+      zone.textContent = 'Drop audio files here or click to browse';
+      progressBar.classList.remove('active');
+      if (xhr.status === 200) {
+        this.loadLibrary();
+      } else {
+        zone.textContent = 'Upload failed — try again';
+        setTimeout(() => { zone.textContent = 'Drop audio files here or click to browse'; }, 2000);
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      zone.classList.remove('uploading');
+      zone.textContent = 'Upload failed — try again';
+      progressBar.classList.remove('active');
+      setTimeout(() => { zone.textContent = 'Drop audio files here or click to browse'; }, 2000);
+    });
+
+    xhr.send(formData);
+  },
+
+  async deleteFromLibrary(filename) {
+    if (!confirm(`Delete "${filename}" from library? This will remove it from all playlists.`)) return;
+    try {
+      const res = await fetch(`/api/library/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.loadLibrary();
+      }
+    } catch (e) {
+      console.error('Delete from library failed:', e);
+    }
+  },
+
+  // === Playlists ===
+
+  async loadPlaylists() {
+    try {
+      const res = await fetch('/api/playlists', {
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.playlists = data.playlists;
+        this.renderPlaylists(data.playlists);
+      }
+    } catch (e) {
+      console.error('Failed to load playlists:', e);
+    }
+  },
+
+  renderPlaylists(playlists) {
+    const container = document.getElementById('playlistsList');
+    const detailEl = document.getElementById('playlistDetail');
+
+    // Hide detail if visible; show list
+    if (!detailEl.classList.contains('hidden')) return;
+
+    if (!playlists || playlists.length === 0) {
+      container.innerHTML = '<div class="track-list-empty">No playlists yet — create one above</div>';
+      return;
+    }
+
+    // Find which channels use each playlist
+    const usedBy = {};
+    for (const [ch, plId] of Object.entries(this.channelAssignments)) {
+      if (plId) {
+        if (!usedBy[plId]) usedBy[plId] = [];
+        usedBy[plId].push(this.channelNames[ch] || ch);
+      }
+    }
+
+    container.innerHTML = playlists.map(pl => `
+      <div class="playlist-card" onclick="Admin.openPlaylist('${this.escapeAttr(pl.id)}')">
+        <div class="playlist-card-name">${this.escapeHtml(pl.name)}</div>
+        <div class="playlist-card-info">
+          ${pl.trackCount} track${pl.trackCount !== 1 ? 's' : ''}
+          ${usedBy[pl.id] ? ' &middot; Used by: ' + usedBy[pl.id].join(', ') : ''}
+        </div>
+      </div>
+    `).join('');
+  },
+
+  showCreatePlaylist() {
+    document.getElementById('createPlaylistForm').classList.remove('hidden');
+    document.getElementById('newPlaylistName').focus();
+  },
+
+  hideCreatePlaylist() {
+    document.getElementById('createPlaylistForm').classList.add('hidden');
+    document.getElementById('newPlaylistName').value = '';
+  },
+
+  async createPlaylist() {
+    const name = document.getElementById('newPlaylistName').value.trim();
+    if (!name) return;
+
+    try {
+      const res = await fetch('/api/playlists', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ name, tracks: [] }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.hideCreatePlaylist();
+        this.loadPlaylists();
+        this.loadChannelAssignments();
+      }
+    } catch (e) {
+      console.error('Create playlist failed:', e);
+    }
+  },
+
+  async openPlaylist(id) {
+    this.currentPlaylistId = id;
+
+    document.getElementById('playlistsList').classList.add('hidden');
+    document.querySelector('.playlists-toolbar').classList.add('hidden');
+    document.getElementById('playlistDetail').classList.remove('hidden');
+
+    try {
+      const [plRes, libRes] = await Promise.all([
+        fetch(`/api/playlists/${encodeURIComponent(id)}`, { headers: { 'Authorization': `Bearer ${this.token}` } }),
+        fetch('/api/library', { headers: { 'Authorization': `Bearer ${this.token}` } }),
+      ]);
+
+      const plData = await plRes.json();
+      const libData = await libRes.json();
+
+      if (plData.ok) {
+        this.currentPlaylistData = plData.playlist;
+        document.getElementById('playlistDetailName').textContent = plData.playlist.name;
+        this.renderPlaylistTracks(plData.playlist.tracks);
+      }
+
+      if (libData.ok) {
+        this.libraryTracks = libData.tracks;
+        this.renderPlaylistPicker(libData.tracks, plData.ok ? plData.playlist.tracks : []);
+      }
+    } catch (e) {
+      console.error('Failed to load playlist detail:', e);
+    }
+  },
+
+  closePlaylistDetail() {
+    this.currentPlaylistId = null;
+    this.currentPlaylistData = null;
+
+    document.getElementById('playlistDetail').classList.add('hidden');
+    document.getElementById('playlistsList').classList.remove('hidden');
+    document.querySelector('.playlists-toolbar').classList.remove('hidden');
+
+    this.loadPlaylists();
+  },
+
+  renderPlaylistTracks(tracks) {
+    const container = document.getElementById('playlistDetailTracks');
+    if (!tracks || tracks.length === 0) {
+      container.innerHTML = '<div class="track-list-empty">No tracks — add from library above</div>';
+      return;
+    }
+
+    container.innerHTML = tracks.map((t, i) => `
+      <div class="track-item">
+        <div class="track-order-btns">
+          <button class="track-move" onclick="Admin.movePlaylistTrack(${i}, 'up')" ${i === 0 ? 'disabled' : ''}>&#x25B2;</button>
+          <button class="track-move" onclick="Admin.movePlaylistTrack(${i}, 'down')" ${i === tracks.length - 1 ? 'disabled' : ''}>&#x25BC;</button>
+        </div>
+        <div class="track-meta">
+          <div class="track-name">${this.escapeHtml(t.title || t.filename)}</div>
+          <div class="track-artist">${this.escapeHtml(t.artist || '')}${t.duration ? ' &middot; ' + this.formatDuration(t.duration) : ''}</div>
+        </div>
+        <button class="track-delete" onclick="Admin.removeFromPlaylist('${this.escapeAttr(t.filename)}')" title="Remove">&#x2715;</button>
+      </div>
+    `).join('');
+  },
+
+  renderPlaylistPicker(libraryTracks, playlistTracks) {
+    const container = document.getElementById('playlistPickerList');
+    const inPlaylist = new Set(playlistTracks.map(t => t.filename));
+
+    container.innerHTML = libraryTracks.map(t => {
+      const added = inPlaylist.has(t.filename);
+      return `
+        <div class="track-item picker-item ${added ? 'in-playlist' : ''}" data-filename="${this.escapeAttr(t.filename)}" data-title="${this.escapeAttr(t.title || '')}" data-artist="${this.escapeAttr(t.artist || '')}">
+          <div class="track-meta">
+            <div class="track-name">${this.escapeHtml(t.title || t.filename)}</div>
+            <div class="track-artist">${this.escapeHtml(t.artist || '')}</div>
+          </div>
+          <button class="btn ${added ? 'btn-added' : 'btn-add'}" onclick="Admin.toggleTrackInPlaylist('${this.escapeAttr(t.filename)}', this)">
+            ${added ? 'Added' : '+ Add'}
+          </button>
+        </div>
+      `;
+    }).join('');
+  },
+
+  filterPicker() {
+    const query = document.getElementById('pickerSearch').value.toLowerCase();
+    const items = document.querySelectorAll('#playlistPickerList .picker-item');
+    items.forEach(item => {
+      const title = (item.dataset.title || '').toLowerCase();
+      const artist = (item.dataset.artist || '').toLowerCase();
+      const filename = (item.dataset.filename || '').toLowerCase();
+      item.style.display = (title.includes(query) || artist.includes(query) || filename.includes(query)) ? '' : 'none';
+    });
+  },
+
+  async toggleTrackInPlaylist(filename, btn) {
+    if (!this.currentPlaylistData) return;
+
+    const tracks = this.currentPlaylistData.tracks.map(t => t.filename);
+    const idx = tracks.indexOf(filename);
+
+    if (idx !== -1) {
+      tracks.splice(idx, 1);
+    } else {
+      tracks.push(filename);
+    }
+
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(this.currentPlaylistId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ tracks }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        // Re-open to refresh both lists
+        this.openPlaylist(this.currentPlaylistId);
+        this.loadChannelAssignments();
+      }
+    } catch (e) {
+      console.error('Toggle track in playlist failed:', e);
+    }
+  },
+
+  async movePlaylistTrack(index, direction) {
+    if (!this.currentPlaylistData) return;
+    const tracks = this.currentPlaylistData.tracks.map(t => t.filename);
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= tracks.length) return;
+
+    [tracks[index], tracks[newIndex]] = [tracks[newIndex], tracks[index]];
+
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(this.currentPlaylistId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ tracks }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.openPlaylist(this.currentPlaylistId);
+      }
+    } catch (e) {
+      console.error('Move playlist track failed:', e);
+    }
+  },
+
+  async removeFromPlaylist(filename) {
+    if (!this.currentPlaylistData) return;
+    const tracks = this.currentPlaylistData.tracks.map(t => t.filename).filter(f => f !== filename);
+
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(this.currentPlaylistId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+        },
+        body: JSON.stringify({ tracks }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        this.openPlaylist(this.currentPlaylistId);
+        this.loadChannelAssignments();
+      }
+    } catch (e) {
+      console.error('Remove from playlist failed:', e);
+    }
+  },
+
+  async deleteCurrentPlaylist() {
+    if (!this.currentPlaylistId) return;
+    if (!confirm(`Delete playlist "${this.currentPlaylistData?.name || this.currentPlaylistId}"?`)) return;
+
+    try {
+      await fetch(`/api/playlists/${encodeURIComponent(this.currentPlaylistId)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      this.closePlaylistDetail();
+      this.loadChannelAssignments();
+    } catch (e) {
+      console.error('Delete playlist failed:', e);
+    }
+  },
+
+  // === Existing functionality (unchanged) ===
+
   toggleTracks(id) {
     const body = document.getElementById(`tracks-body-${id}`);
     const toggle = document.getElementById(`tracks-toggle-${id}`);
@@ -150,11 +655,9 @@ const Admin = {
 
   setSort(id, sort, btn) {
     this.trackSort[id] = sort;
-    // Update active button
     const bar = btn.parentElement;
     bar.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    // Re-render with current data
     if (this.trackData[id]) {
       this.renderTracks(id, this.trackData[id]);
     }
@@ -528,6 +1031,7 @@ const Admin = {
     this.fetchAndUpdate();
     this.fetchSystemStats();
     this.loadBluetoothStatus();
+    this.setupLibraryUpload();
     setInterval(() => this.fetchAndUpdate(), 3000);
     setInterval(() => this.fetchSystemStats(), 5000);
     setInterval(() => this.loadBluetoothStatus(), 10000);
@@ -612,6 +1116,14 @@ const Admin = {
     } catch (e) {
       console.error('Talkover toggle failed:', e);
     }
+  },
+
+  // --- Helpers ---
+
+  formatDuration(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   },
 
   escapeHtml(str) {

@@ -473,3 +473,188 @@ body {
 
 .system-controls h3 { margin-bottom: 1rem; }
 .system-controls .btn { margin-right: 0.5rem; }
+
+/* Admin tabs */
+.admin-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  padding: 0.6rem 1.25rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--text); border-bottom-color: var(--blue); }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Playlist assignment dropdown on channel cards */
+.playlist-assign {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.playlist-assign label {
+  color: var(--dim);
+  font-weight: 600;
+}
+
+.playlist-assign select {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+/* Library section */
+.library-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.library-toolbar { margin-bottom: 0.75rem; }
+
+.library-search {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.library-stats {
+  font-size: 0.8rem;
+  color: var(--dim);
+  margin-bottom: 0.5rem;
+}
+
+.library-list {
+  max-height: 500px;
+}
+
+/* Playlists section */
+.playlists-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.playlists-toolbar {
+  margin-bottom: 1rem;
+}
+
+.create-playlist-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.playlist-name-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.playlist-card {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.playlist-card:hover { background: rgba(255,255,255,0.03); }
+
+.playlist-card-name {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.playlist-card-info {
+  font-size: 0.8rem;
+  color: var(--dim);
+}
+
+/* Playlist detail view */
+.playlist-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.playlist-detail-header h3 {
+  flex: 1;
+}
+
+.playlist-track-picker {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.playlist-track-picker h4,
+.playlists-section h4 {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+
+#playlistPickerList {
+  max-height: 200px;
+}
+
+#playlistDetailTracks {
+  max-height: 400px;
+}
+
+/* Track picker add/added buttons */
+.btn-add {
+  border-color: var(--green);
+  color: var(--green);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.btn-add:hover { background: rgba(0, 230, 118, 0.1); }
+
+.btn-added {
+  border-color: var(--dim);
+  color: var(--dim);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.picker-item.in-playlist { opacity: 0.7; }

@@ -20,6 +20,9 @@ echo "Deploying to $PI_USER@$PI_IP..."
 # Ensure temp dirs exist
 run_ssh "mkdir -p /tmp/disco-js /tmp/disco-css /tmp/disco-lib"
 
+# Ensure music library and playlists directories exist
+run_ssh "mkdir -p /home/$PI_USER/music/library /home/$PI_USER/music/playlists"
+
 # Web files
 echo "[1/4] Web files..."
 run_scp "$SCRIPT_DIR/web/index.html" "$SCRIPT_DIR/web/admin.html" "$PI_USER@$PI_IP:/tmp/"

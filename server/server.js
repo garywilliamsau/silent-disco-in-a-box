@@ -13,6 +13,10 @@ const bluetooth = require('./lib/bluetooth');
 const EnergyAnalyser = require('./lib/energy');
 const playlist = require('./lib/playlist');
 const config = require('./lib/config');
+const library = require('./lib/library');
+const playlistManager = require('./lib/playlist-manager');
+const channelPlaylists = require('./lib/channel-playlists');
+const { migrate } = require('./lib/migrate');
 
 const conf = config.get();
 const PORT = conf.server.api_port || 3000;
@@ -539,6 +543,185 @@ app.post('/api/talkover/toggle', requireAdmin, (req, res) => {
   res.json({ ok: true, enabled: talkoverEnabled });
 });
 
+// === LIBRARY ENDPOINTS ===
+
+// Multer for library uploads (shared music library)
+const libraryUpload = multer({
+  storage: multer.diskStorage({
+    destination(req, file, cb) {
+      const tmpDir = path.join(library.getLibraryPath(), '.tmp');
+      fs.mkdirSync(tmpDir, { recursive: true });
+      cb(null, tmpDir);
+    },
+    filename(req, file, cb) {
+      const safe = file.originalname.replace(/[/\\]/g, '_');
+      cb(null, `${Date.now()}_${safe}`);
+    },
+  }),
+  limits: { fileSize: 50 * 1024 * 1024, files: 20 },
+  fileFilter(req, file, cb) {
+    if (/\.(mp3|m4a|ogg|flac)$/i.test(file.originalname)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio files are allowed (.mp3, .m4a, .ogg, .flac)'));
+    }
+  },
+});
+
+// --- GET /api/library --- list all tracks in shared library
+app.get('/api/library', requireAdmin, async (req, res) => {
+  try {
+    const catalog = await library.getCatalog();
+    res.json({ ok: true, tracks: catalog });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- POST /api/library/upload --- upload files to shared library
+app.post('/api/library/upload', requireAdmin, libraryUpload.array('files', 20), async (req, res) => {
+  try {
+    const added = await library.addFiles(req.files);
+    // Refresh M3Us for any channels using playlists that contain new tracks
+    await channelPlaylists.refreshAllM3Us().catch(() => {});
+    res.json({ ok: true, added, totalTracks: (await library.getCatalog()).length });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- DELETE /api/library/:filename --- delete track from library
+app.delete('/api/library/:filename', requireAdmin, async (req, res) => {
+  const { filename } = req.params;
+  try {
+    const removed = library.removeFile(filename);
+    await playlistManager.removeTrackFromAll(filename);
+    await channelPlaylists.refreshAllM3Us().catch(() => {});
+    res.json({ ok: true, removed });
+  } catch (err) {
+    res.status(err.message === 'File not found in catalog' ? 404 : 500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- GET /api/library/album-art/:filename --- serve album art from library
+app.get('/api/library/album-art/:filename', async (req, res) => {
+  const { filename } = req.params;
+  const art = await library.getAlbumArt(filename);
+  if (art) {
+    res.set('Content-Type', art.mime || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(art.data);
+  } else {
+    res.redirect('/assets/default-art.png');
+  }
+});
+
+// === PLAYLIST ENDPOINTS ===
+
+// --- GET /api/playlists --- list all playlists
+app.get('/api/playlists', requireAdmin, async (req, res) => {
+  try {
+    const playlists = await playlistManager.listPlaylists();
+    res.json({ ok: true, playlists });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- POST /api/playlists --- create a new playlist
+app.post('/api/playlists', requireAdmin, async (req, res) => {
+  const { name, tracks } = req.body;
+  if (!name || typeof name !== 'string') {
+    return res.status(400).json({ ok: false, error: 'Name is required' });
+  }
+  try {
+    const pl = await playlistManager.createPlaylist(name, tracks || []);
+    res.json({ ok: true, playlist: pl });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- GET /api/playlists/:id --- get playlist details with track metadata
+app.get('/api/playlists/:id', requireAdmin, async (req, res) => {
+  try {
+    const pl = await playlistManager.getPlaylist(req.params.id);
+    if (!pl) return res.status(404).json({ ok: false, error: 'Playlist not found' });
+    res.json({ ok: true, playlist: pl });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- PUT /api/playlists/:id --- update playlist (name and/or tracks)
+app.put('/api/playlists/:id', requireAdmin, async (req, res) => {
+  const { name, tracks } = req.body;
+  try {
+    const pl = await playlistManager.updatePlaylist(req.params.id, { name, tracks });
+    if (!pl) return res.status(404).json({ ok: false, error: 'Playlist not found' });
+    // Refresh M3Us for channels using this playlist
+    await channelPlaylists.refreshAllM3Us().catch(() => {});
+    res.json({ ok: true, playlist: pl });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- DELETE /api/playlists/:id --- delete a playlist
+app.delete('/api/playlists/:id', requireAdmin, async (req, res) => {
+  const playlistId = req.params.id;
+  try {
+    // Unassign from any channels using this playlist
+    const assignments = await channelPlaylists.getAssignments();
+    for (const [channelId, assignedId] of Object.entries(assignments)) {
+      if (assignedId === playlistId) {
+        await channelPlaylists.unassignPlaylist(channelId);
+      }
+    }
+    const deleted = await playlistManager.deletePlaylist(playlistId);
+    if (!deleted) return res.status(404).json({ ok: false, error: 'Playlist not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// === CHANNEL PLAYLIST ASSIGNMENT ENDPOINTS ===
+
+// --- GET /api/channels/:id/playlist --- get assigned playlist for channel
+app.get('/api/channels/:id/playlist', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+  try {
+    const pl = await channelPlaylists.getChannelPlaylist(id);
+    const assignments = await channelPlaylists.getAssignments();
+    res.json({ ok: true, channel: id, playlistId: assignments[id] || null, playlist: pl });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- PUT /api/channels/:id/playlist --- assign or unassign a playlist
+app.put('/api/channels/:id/playlist', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+  const { playlistId } = req.body;
+  try {
+    let assignments;
+    if (playlistId === null || playlistId === undefined) {
+      assignments = await channelPlaylists.unassignPlaylist(id);
+    } else {
+      // Verify playlist exists
+      const pl = await playlistManager.getPlaylist(playlistId);
+      if (!pl) return res.status(404).json({ ok: false, error: 'Playlist not found' });
+      assignments = await channelPlaylists.assignPlaylist(id, playlistId);
+    }
+    res.json({ ok: true, channel: id, assignments });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // --- Multer error handler ---
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
@@ -727,6 +910,13 @@ talkoverWss.on('connection', (ws) => {
 conf.channels.forEach(ch => {
   playlist.ensureM3u(ch.music_dir);
   console.log(`[playlist] ${ch.id}: ${playlist.getOrderedFiles(ch.music_dir).length} tracks`);
+});
+
+// Run migration from per-channel layout to shared library (one-time, idempotent)
+migrate().then(() => {
+  console.log('[startup] migration check complete');
+}).catch(err => {
+  console.error('[startup] migration error (non-fatal):', err.message);
 });
 
 server.listen(PORT, '127.0.0.1', () => {

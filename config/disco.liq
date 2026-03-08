@@ -162,7 +162,7 @@ red_playlist = playlist(
   id="red_playlist",
   mode="normal",
   reload_mode="watch",
-  "/home/silentdisco/music/red/playlist.m3u"
+  "/home/silentdisco/music/channel-red.m3u"
 )
 
 red_queue = request.queue(id="red_queue")
@@ -297,7 +297,7 @@ green_playlist = playlist(
   id="green_playlist",
   mode="normal",
   reload_mode="watch",
-  "/home/silentdisco/music/green/playlist.m3u"
+  "/home/silentdisco/music/channel-green.m3u"
 )
 
 green_queue = request.queue(id="green_queue")
@@ -428,7 +428,7 @@ blue_playlist = playlist(
   id="blue_playlist",
   mode="normal",
   reload_mode="watch",
-  "/home/silentdisco/music/blue/playlist.m3u"
+  "/home/silentdisco/music/channel-blue.m3u"
 )
 
 blue_queue = request.queue(id="blue_queue")
