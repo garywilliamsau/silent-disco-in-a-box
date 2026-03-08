@@ -47,6 +47,16 @@ server.on('upgrade', (request, socket, head) => {
 
 app.use(express.json());
 
+// --- Admin auth middleware ---
+function requireAdmin(req, res, next) {
+  const auth = req.headers.authorization;
+  const queryToken = req.query.token;
+  if (auth === `Bearer ${conf.admin.password}` || queryToken === conf.admin.password) {
+    return next();
+  }
+  return res.status(401).json({ ok: false, error: 'Unauthorized' });
+}
+
 // --- Talkover state ---
 let talkoverEnabled = true; // admin can toggle
 let talkoverFifo = null;
@@ -127,7 +137,7 @@ app.get('/api/channels/:id/now-playing', async (req, res) => {
 });
 
 // --- POST /api/channels/:id/skip ---
-app.post('/api/channels/:id/skip', async (req, res) => {
+app.post('/api/channels/:id/skip', requireAdmin, async (req, res) => {
   const { id } = req.params;
   if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
 
@@ -298,16 +308,6 @@ app.get('/api/stats', async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
-
-// --- Admin auth middleware ---
-function requireAdmin(req, res, next) {
-  const auth = req.headers.authorization;
-  const queryToken = req.query.token;
-  if (auth === `Bearer ${conf.admin.password}` || queryToken === conf.admin.password) {
-    return next();
-  }
-  return res.status(401).json({ ok: false, error: 'Unauthorized' });
-}
 
 // --- GET /api/admin/event-stats --- event stats summary
 app.get('/api/admin/event-stats', requireAdmin, (req, res) => {
