@@ -325,6 +325,17 @@ app.post('/api/admin/event-stats/reset', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// --- GET /api/admin/channel-switches --- channel switch log
+app.get('/api/admin/channel-switches', requireAdmin, (req, res) => {
+  try {
+    const since = parseInt(req.query.since) || 0;
+    const switches = eventStats.getSwitches(since);
+    res.json({ ok: true, switches });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // --- POST /api/admin/login ---
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
@@ -926,6 +937,9 @@ const WS_INTERVAL_MS = 3000;
 // Track last-known filename per channel for play history
 const lastKnownFile = {};
 
+// Latest now-playing per channel for switch logging
+const latestNowPlaying = {};
+
 async function broadcastNowPlaying() {
   try {
     const [channels, stats] = await Promise.all([
@@ -1003,6 +1017,11 @@ async function broadcastNowPlaying() {
       listeners: wsListeners[ch.id] || 0,
     }));
 
+    // Cache latest now-playing for switch logging
+    for (const ch of result) {
+      latestNowPlaying[ch.id] = ch.nowPlaying;
+    }
+
     const msg = JSON.stringify({ type: 'update', channels: result });
     for (const ws of wss.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg);
@@ -1033,7 +1052,12 @@ wss.on('connection', (ws) => {
     try {
       const msg = JSON.parse(data);
       if (msg.type === 'listen' && validChannel(msg.channel)) {
+        const prev = ws.channel;
         ws.channel = msg.channel;
+        // Log channel switch (not initial connection)
+        if (prev && prev !== msg.channel) {
+          eventStats.recordSwitch(prev, msg.channel, latestNowPlaying);
+        }
       }
     } catch { /* ignore malformed messages */ }
   });

@@ -21,6 +21,7 @@ class EventStats {
     this._statsDir = getStatsDir();
     this._statsFile = path.join(this._statsDir, 'event-stats.jsonl');
     this._tracksFile = path.join(this._statsDir, 'event-tracks.json');
+    this._switchesFile = path.join(this._statsDir, 'channel-switches.jsonl');
     fs.mkdirSync(this._statsDir, { recursive: true });
     this._trackLog = this._loadTrackLog();
     this._lastTrack = {};  // { channelId: { title, artist } }
@@ -78,6 +79,32 @@ class EventStats {
     this._trackLog[trackKey].lastPlayed = Date.now();
 
     this._saveTrackLog();
+  }
+
+  // Log a listener channel switch with what was playing on both channels
+  recordSwitch(from, to, nowPlayingMap) {
+    const songFrom = nowPlayingMap[from]?.title || 'Unknown';
+    const songTo = nowPlayingMap[to]?.title || 'Unknown';
+    const artistFrom = nowPlayingMap[from]?.artist || '';
+    const artistTo = nowPlayingMap[to]?.artist || '';
+    const entry = { ts: Date.now(), from, to, songFrom, artistFrom, songTo, artistTo };
+    try {
+      fs.appendFileSync(this._switchesFile, JSON.stringify(entry) + '\n');
+    } catch (e) {
+      console.warn('[event-stats] switch log error:', e.message);
+    }
+  }
+
+  // Read all switch events (optionally filtered by time range)
+  getSwitches(sinceTs = 0) {
+    try {
+      const raw = fs.readFileSync(this._switchesFile, 'utf8');
+      return raw.trim().split('\n').filter(Boolean).map(line => {
+        try { return JSON.parse(line); } catch { return null; }
+      }).filter(e => e && e.ts >= sinceTs);
+    } catch {
+      return [];
+    }
   }
 
   _loadTrackLog() {
@@ -212,6 +239,7 @@ class EventStats {
   reset() {
     try { fs.unlinkSync(this._statsFile); } catch { /* ok */ }
     try { fs.unlinkSync(this._tracksFile); } catch { /* ok */ }
+    try { fs.unlinkSync(this._switchesFile); } catch { /* ok */ }
     this._trackLog = {};
     this._lastTrack = {};
   }
