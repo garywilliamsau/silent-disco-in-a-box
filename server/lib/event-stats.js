@@ -3,9 +3,14 @@
 const fs = require('fs');
 const path = require('path');
 
-const STATS_DIR = path.join(__dirname, '..', '..', 'data');
-const STATS_FILE = path.join(STATS_DIR, 'event-stats.jsonl');
-const TRACKS_FILE = path.join(STATS_DIR, 'event-tracks.json');
+const config = require('./config');
+
+function getStatsDir() {
+  const conf = config.get();
+  const musicRoot = conf.library?.path ? path.dirname(conf.library.path) : '/home/silentdisco/music';
+  return path.join(musicRoot, 'stats');
+}
+
 const SAMPLE_INTERVAL_MS = 30000; // 30 seconds
 
 class EventStats {
@@ -13,9 +18,12 @@ class EventStats {
     this.channels = channels;
     this._timer = null;
     this._getListeners = null;
+    this._statsDir = getStatsDir();
+    this._statsFile = path.join(this._statsDir, 'event-stats.jsonl');
+    this._tracksFile = path.join(this._statsDir, 'event-tracks.json');
+    fs.mkdirSync(this._statsDir, { recursive: true });
     this._trackLog = this._loadTrackLog();
     this._lastTrack = {};  // { channelId: { title, artist } }
-    fs.mkdirSync(STATS_DIR, { recursive: true });
   }
 
   // Set a callback that returns { channelId: listenerCount }
@@ -44,7 +52,7 @@ class EventStats {
       entry[ch] = listeners[ch] || 0;
     }
     try {
-      fs.appendFileSync(STATS_FILE, JSON.stringify(entry) + '\n');
+      fs.appendFileSync(this._statsFile, JSON.stringify(entry) + '\n');
     } catch (e) {
       console.warn('[event-stats] write error:', e.message);
     }
@@ -74,7 +82,7 @@ class EventStats {
 
   _loadTrackLog() {
     try {
-      const raw = fs.readFileSync(TRACKS_FILE, 'utf8');
+      const raw = fs.readFileSync(this._tracksFile, 'utf8');
       return JSON.parse(raw);
     } catch {
       return {};
@@ -83,7 +91,7 @@ class EventStats {
 
   _saveTrackLog() {
     try {
-      fs.writeFileSync(TRACKS_FILE, JSON.stringify(this._trackLog, null, 2));
+      fs.writeFileSync(this._tracksFile, JSON.stringify(this._trackLog, null, 2));
     } catch (e) {
       console.warn('[event-stats] track log write error:', e.message);
     }
@@ -94,7 +102,7 @@ class EventStats {
     // Read listener samples
     let samples = [];
     try {
-      const raw = fs.readFileSync(STATS_FILE, 'utf8');
+      const raw = fs.readFileSync(this._statsFile, 'utf8');
       samples = raw.trim().split('\n').filter(Boolean).map(line => {
         try { return JSON.parse(line); } catch { return null; }
       }).filter(Boolean);
@@ -202,8 +210,8 @@ class EventStats {
 
   // Reset stats for a new event
   reset() {
-    try { fs.unlinkSync(STATS_FILE); } catch { /* ok */ }
-    try { fs.unlinkSync(TRACKS_FILE); } catch { /* ok */ }
+    try { fs.unlinkSync(this._statsFile); } catch { /* ok */ }
+    try { fs.unlinkSync(this._tracksFile); } catch { /* ok */ }
     this._trackLog = {};
     this._lastTrack = {};
   }
