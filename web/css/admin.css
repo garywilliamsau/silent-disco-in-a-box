@@ -1027,3 +1027,72 @@ body {
 .stats-actions {
   padding-top: 0.5rem;
 }
+
+/* --- Sankey Flow Chart --- */
+.sankey-container {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.sankey-container canvas {
+  display: block;
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.sankey-empty {
+  color: var(--dim);
+  font-size: 0.85rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.sankey-detail {
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 0.75rem;
+}
+
+.sankey-detail h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.95rem;
+}
+
+.sankey-detail-flows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.sankey-flow-item {
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.sankey-flow-count {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 0 0.4rem;
+  font-weight: 600;
+  margin-right: 0.25rem;
+  min-width: 1.5em;
+  text-align: center;
+}
+
+.sankey-flow-song {
+  color: var(--dim);
+  font-style: italic;
+}
+
+.sankey-detail-net {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 1rem;
+}

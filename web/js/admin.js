@@ -1690,6 +1690,22 @@ const Admin = {
       });
       const data = await res.json();
       if (data.ok) this.renderEventStats(data);
+
+      // Fetch channel switch data for Sankey
+      try {
+        const swRes = await fetch('/api/admin/channel-switches', {
+          headers: { 'Authorization': `Bearer ${this.token}` },
+        });
+        const swData = await swRes.json();
+        if (swData.ok && swData.switches.length > 0) {
+          document.getElementById('sankeyEmpty').classList.add('hidden');
+          this.renderSankeyChart(swData.switches);
+        } else {
+          document.getElementById('sankeyEmpty').classList.remove('hidden');
+        }
+      } catch (e) {
+        console.warn('Failed to load channel switches:', e);
+      }
     } catch (e) {
       console.error('Failed to load event stats:', e);
     }
@@ -1850,6 +1866,208 @@ const Admin = {
       ctx.fillStyle = this.channelColors[ch] + '20';
       ctx.fill();
     }
+  },
+
+  renderSankeyChart(switches) {
+    const canvas = document.getElementById('sankeyChart');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    // Handle high-DPI displays
+    const cssW = 900;
+    canvas.width = cssW * dpr;
+    canvas.height = 500 * dpr;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = '500px';
+    ctx.scale(dpr, dpr);
+
+    const W = cssW;
+    const H = 500;
+    ctx.clearRect(0, 0, W, H);
+
+    if (!switches.length) return;
+
+    const channels = this.channels; // ['red', 'green', 'blue']
+    const colors = this.channelColors; // { red: '#ff1744', green: '#00e676', blue: '#2979ff' }
+
+    // Time range
+    const minTs = switches[0].ts;
+    const maxTs = switches[switches.length - 1].ts;
+
+    // Bucket into 5-minute windows
+    const BUCKET_MS = 5 * 60 * 1000;
+    const bucketStart = Math.floor(minTs / BUCKET_MS) * BUCKET_MS;
+    const bucketEnd = Math.ceil(maxTs / BUCKET_MS) * BUCKET_MS;
+    const buckets = [];
+
+    for (let t = bucketStart; t < bucketEnd; t += BUCKET_MS) {
+      const bucketSwitches = switches.filter(s => s.ts >= t && s.ts < t + BUCKET_MS);
+      const flows = {};
+      for (const s of bucketSwitches) {
+        const key = `${s.from}->${s.to}`;
+        if (!flows[key]) flows[key] = { from: s.from, to: s.to, count: 0, switches: [] };
+        flows[key].count++;
+        flows[key].switches.push(s);
+      }
+      buckets.push({ ts: t, flows: Object.values(flows), total: bucketSwitches.length });
+    }
+
+    // Resize canvas height to fit buckets
+    const ROW_H = 50;
+    const MARGIN_TOP = 30;
+    const MARGIN_BOTTOM = 20;
+    const totalH = MARGIN_TOP + buckets.length * ROW_H + MARGIN_BOTTOM;
+    canvas.height = totalH * dpr;
+    canvas.style.height = totalH + 'px';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, totalH);
+
+    // Layout
+    const LANE_W = 140;
+    const MARGIN_LEFT = 70;
+    const laneGap = (W - MARGIN_LEFT - 3 * LANE_W) / 2;
+    const laneX = channels.map((_, i) => MARGIN_LEFT + i * (LANE_W + laneGap));
+
+    // Store bucket rects for click detection
+    this._sankeyBuckets = [];
+
+    // Draw lane headers
+    ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    channels.forEach((ch, i) => {
+      ctx.fillStyle = colors[ch];
+      ctx.fillText(ch.toUpperCase(), laneX[i] + LANE_W / 2, 18);
+    });
+
+    // Find max flow across all buckets for consistent scaling
+    let globalMaxFlow = 1;
+    for (const bucket of buckets) {
+      for (const flow of bucket.flows) {
+        if (flow.count > globalMaxFlow) globalMaxFlow = flow.count;
+      }
+    }
+
+    // Draw each bucket row
+    buckets.forEach((bucket, rowIdx) => {
+      const y = MARGIN_TOP + rowIdx * ROW_H;
+      const midY = y + ROW_H / 2;
+
+      // Time label
+      const d = new Date(bucket.ts);
+      const label = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      ctx.font = '11px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#666';
+      ctx.fillText(label, MARGIN_LEFT - 10, midY + 4);
+
+      // Draw lane blocks (subtle rectangles)
+      channels.forEach((ch, i) => {
+        ctx.fillStyle = colors[ch] + '12';
+        ctx.strokeStyle = colors[ch] + '30';
+        ctx.lineWidth = 1;
+        ctx.fillRect(laneX[i], y + 2, LANE_W, ROW_H - 4);
+        ctx.strokeRect(laneX[i], y + 2, LANE_W, ROW_H - 4);
+      });
+
+      // Draw flow curves
+      for (const flow of bucket.flows) {
+        const fromIdx = channels.indexOf(flow.from);
+        const toIdx = channels.indexOf(flow.to);
+        if (fromIdx === -1 || toIdx === -1) continue;
+
+        const x1 = laneX[fromIdx] + (fromIdx < toIdx ? LANE_W : 0);
+        const x2 = laneX[toIdx] + (fromIdx < toIdx ? 0 : LANE_W);
+        const thickness = Math.max(2, (flow.count / globalMaxFlow) * 14);
+
+        // Draw bezier curve
+        ctx.beginPath();
+        ctx.moveTo(x1, midY);
+        const cpOffset = Math.abs(x2 - x1) * 0.4;
+        const cp1x = fromIdx < toIdx ? x1 + cpOffset : x1 - cpOffset;
+        const cp2x = fromIdx < toIdx ? x2 - cpOffset : x2 + cpOffset;
+        ctx.bezierCurveTo(cp1x, midY, cp2x, midY, x2, midY);
+        ctx.strokeStyle = colors[flow.from] + '70';
+        ctx.lineWidth = thickness;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Flow count label at midpoint
+        if (flow.count >= 1) {
+          const midX = (x1 + x2) / 2;
+          ctx.font = 'bold 10px system-ui, -apple-system, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#fff';
+          ctx.fillText(flow.count, midX, midY - thickness / 2 - 4);
+        }
+      }
+
+      // Highlight row on hover (store for click)
+      this._sankeyBuckets.push({ x: 0, y, w: W, h: ROW_H, bucket });
+    });
+
+    // Click handler for drill-down
+    canvas.onclick = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleY = (canvas.height / dpr) / rect.height;
+      const cy = (e.clientY - rect.top) * scaleY;
+
+      for (const b of this._sankeyBuckets) {
+        if (cy >= b.y && cy < b.y + b.h && b.bucket.total > 0) {
+          this.showSankeyDetail(b.bucket);
+          return;
+        }
+      }
+      document.getElementById('sankeyDetail').classList.add('hidden');
+    };
+  },
+
+  showSankeyDetail(bucket) {
+    const el = document.getElementById('sankeyDetail');
+    const d = new Date(bucket.ts);
+    const timeLabel = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const endD = new Date(bucket.ts + 5 * 60 * 1000);
+    const endLabel = endD.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Net per channel
+    const net = {};
+    for (const ch of this.channels) net[ch] = 0;
+    for (const flow of bucket.flows) {
+      net[flow.from] -= flow.count;
+      net[flow.to] += flow.count;
+    }
+
+    let html = `<h4>${timeLabel} – ${endLabel}</h4>`;
+    html += `<div class="sankey-detail-flows">`;
+    for (const flow of bucket.flows.sort((a, b) => b.count - a.count)) {
+      // Group by song pair
+      const songPairs = {};
+      for (const s of flow.switches) {
+        const key = `${s.songFrom}|||${s.songTo}`;
+        if (!songPairs[key]) songPairs[key] = { ...s, count: 0 };
+        songPairs[key].count++;
+      }
+      for (const pair of Object.values(songPairs)) {
+        html += `<div class="sankey-flow-item">
+          <span class="sankey-flow-count">${pair.count}</span>
+          left <span style="color:${this.channelColors[flow.from]}">${flow.from}</span>
+          <span class="sankey-flow-song">"${this.escapeHtml(pair.songFrom)}"</span>
+          → <span style="color:${this.channelColors[flow.to]}">${flow.to}</span>
+          <span class="sankey-flow-song">"${this.escapeHtml(pair.songTo)}"</span>
+        </div>`;
+      }
+    }
+    html += `</div>`;
+    html += `<div class="sankey-detail-net">Net: `;
+    for (const ch of this.channels) {
+      const v = net[ch];
+      const sign = v > 0 ? '+' : '';
+      html += `<span style="color:${this.channelColors[ch]}">${ch} ${sign}${v}</span> `;
+    }
+    html += `</div>`;
+
+    el.innerHTML = html;
+    el.classList.remove('hidden');
   },
 
   async resetEventStats() {
