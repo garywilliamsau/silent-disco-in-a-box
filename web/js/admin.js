@@ -1251,10 +1251,16 @@ const Admin = {
         if (data.power && data.power.voltage !== null) {
           powerEl.style.display = '';
           const v = data.power.voltage.toFixed(2);
-          powerEl.textContent = `${v}V`;
-          if (data.power.undervoltage) {
+          const amps = data.power.maxCurrentMa ? (data.power.maxCurrentMa / 1000).toFixed(0) + 'A' : '';
+          let label = `${v}V`;
+          if (amps) label += `/${amps}`;
+          powerEl.textContent = label;
+          if (data.power.usbOverCurrent) {
             powerEl.style.color = '#ff4444';
-            powerEl.textContent += ' ⚠ LOW';
+            powerEl.textContent += ' USB OVERLOAD';
+          } else if (data.power.undervoltage) {
+            powerEl.style.color = '#ff4444';
+            powerEl.textContent += ' LOW';
           } else if (data.power.undervoltageOccurred) {
             powerEl.style.color = '#ffaa00';
             powerEl.textContent += ' (was low)';

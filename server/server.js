@@ -311,11 +311,22 @@ app.get('/api/system', (req, res) => {
     const ext5v = pmic.match(/EXT5V_V volt\(\d+\)=([\d.]+)V/);
     const throttled = execSync('vcgencmd get_throttled 2>/dev/null', { encoding: 'utf8' });
     const flags = parseInt(throttled.match(/throttled=(0x[0-9a-f]+)/i)?.[1] || '0', 16);
+    // PSU capability from device tree (Pi 5 only)
+    let maxCurrentMa = null;
+    let usbOverCurrent = false;
+    try {
+      const buf = fs.readFileSync('/proc/device-tree/chosen/power/max_current');
+      maxCurrentMa = buf.readUInt32BE(0);
+      const ocBuf = fs.readFileSync('/proc/device-tree/chosen/power/usb_over_current_detected');
+      usbOverCurrent = ocBuf.readUInt32BE(0) !== 0;
+    } catch { /* not Pi 5 or not available */ }
     power = {
       voltage: ext5v ? parseFloat(ext5v[1]) : null,
       undervoltage: !!(flags & 0x1),
       throttled: !!(flags & 0x4),
       undervoltageOccurred: !!(flags & 0x10000),
+      maxCurrentMa,
+      usbOverCurrent,
     };
   } catch { /* not available (Pi 4 etc) */ }
   res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length, temp: tempC, fanRpm, power });
