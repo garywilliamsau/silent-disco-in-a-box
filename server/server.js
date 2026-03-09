@@ -304,7 +304,21 @@ app.get('/api/system', (req, res) => {
       fanRpm = parseInt(fs.readFileSync(files.split('\n')[0], 'utf8').trim(), 10);
     }
   } catch { /* no fan sensor */ }
-  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length, temp: tempC, fanRpm });
+  let power = null;
+  try {
+    const { execSync } = require('child_process');
+    const pmic = execSync('vcgencmd pmic_read_adc 2>/dev/null', { encoding: 'utf8' });
+    const ext5v = pmic.match(/EXT5V_V volt\(\d+\)=([\d.]+)V/);
+    const throttled = execSync('vcgencmd get_throttled 2>/dev/null', { encoding: 'utf8' });
+    const flags = parseInt(throttled.match(/throttled=(0x[0-9a-f]+)/i)?.[1] || '0', 16);
+    power = {
+      voltage: ext5v ? parseFloat(ext5v[1]) : null,
+      undervoltage: !!(flags & 0x1),
+      throttled: !!(flags & 0x4),
+      undervoltageOccurred: !!(flags & 0x10000),
+    };
+  } catch { /* not available (Pi 4 etc) */ }
+  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length, temp: tempC, fanRpm, power });
 });
 
 // --- GET /api/stats ---

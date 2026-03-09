@@ -1247,6 +1247,23 @@ const Admin = {
         } else {
           fanEl.style.display = 'none';
         }
+        const powerEl = document.getElementById('piPower');
+        if (data.power && data.power.voltage !== null) {
+          powerEl.style.display = '';
+          const v = data.power.voltage.toFixed(2);
+          powerEl.textContent = `${v}V`;
+          if (data.power.undervoltage) {
+            powerEl.style.color = '#ff4444';
+            powerEl.textContent += ' ⚠ LOW';
+          } else if (data.power.undervoltageOccurred) {
+            powerEl.style.color = '#ffaa00';
+            powerEl.textContent += ' (was low)';
+          } else {
+            powerEl.style.color = v < 4.85 ? '#ffaa00' : '';
+          }
+        } else {
+          powerEl.style.display = 'none';
+        }
       }
     } catch { /* ignore */ }
   },
