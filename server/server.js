@@ -296,7 +296,15 @@ app.get('/api/system', (req, res) => {
     const raw = fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8');
     tempC = Math.round(parseInt(raw, 10) / 1000);
   } catch { /* not available */ }
-  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length, temp: tempC });
+  let fanRpm = null;
+  try {
+    const { execSync } = require('child_process');
+    const files = execSync('ls /sys/devices/platform/cooling_fan/hwmon/hwmon*/fan1_input 2>/dev/null', { encoding: 'utf8' }).trim();
+    if (files) {
+      fanRpm = parseInt(fs.readFileSync(files.split('\n')[0], 'utf8').trim(), 10);
+    }
+  } catch { /* no fan sensor */ }
+  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length, temp: tempC, fanRpm });
 });
 
 // --- GET /api/stats ---
@@ -1065,19 +1073,23 @@ wss.on('connection', (ws) => {
 });
 
 // --- Energy analyser: real-time beat data for listener visualizer ---
-const energyAnalyser = new EnergyAnalyser(CHANNELS, (energy, beats) => {
-  if (wss.clients.size === 0) return;
-  const msg = JSON.stringify({ type: 'energy', energy, beats });
-  for (const ws of wss.clients) {
-    if (ws.readyState === ws.OPEN) ws.send(msg);
-  }
-});
+if (conf.energy_analyser?.enabled !== false) {
+  const energyAnalyser = new EnergyAnalyser(CHANNELS, (energy, beats) => {
+    if (wss.clients.size === 0) return;
+    const msg = JSON.stringify({ type: 'energy', energy, beats });
+    for (const ws of wss.clients) {
+      if (ws.readyState === ws.OPEN) ws.send(msg);
+    }
+  });
 
-// Start after a delay to let Icecast streams come up
-setTimeout(() => {
-  energyAnalyser.start();
-  console.log('[energy] analyser started');
-}, 10000);
+  // Start after a delay to let Icecast streams come up
+  setTimeout(() => {
+    energyAnalyser.start();
+    console.log('[energy] analyser started');
+  }, 10000);
+} else {
+  console.log('[energy] analyser disabled by config');
+}
 
 // --- Start ---
 // --- Talkover WebSocket: receives mic audio from phones ---

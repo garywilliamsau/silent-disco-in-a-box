@@ -1240,6 +1240,13 @@ const Admin = {
           document.getElementById('piTemp').textContent = `${t}°C`;
           document.getElementById('piTemp').style.color = t >= 80 ? '#ff4444' : t >= 70 ? '#ffaa00' : '';
         }
+        const fanEl = document.getElementById('piFan');
+        if (data.fanRpm !== null && data.fanRpm !== undefined) {
+          fanEl.style.display = '';
+          fanEl.textContent = data.fanRpm > 0 ? `Fan ${data.fanRpm} RPM` : 'Fan off';
+        } else {
+          fanEl.style.display = 'none';
+        }
       }
     } catch { /* ignore */ }
   },
