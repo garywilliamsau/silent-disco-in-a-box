@@ -209,16 +209,16 @@ sed -i "s|/home/silentdisco/music|$MUSIC_DIR|g" /etc/systemd/system/liquidsoap-d
 echo "[9/$STEPS] Configuring network..."
 if command -v nmcli &>/dev/null; then
   echo "  Detected NetworkManager, configuring static IP..."
-  nmcli device set wlan0 managed no 2>/dev/null || true
+  nmcli device set wlan1 managed no 2>/dev/null || true
   mkdir -p /etc/NetworkManager/conf.d
   cat > /etc/NetworkManager/conf.d/99-disco.conf << 'NMCONFEOF'
 [keyfile]
-unmanaged-devices=interface-name:wlan0
+unmanaged-devices=interface-name:wlan1
 NMCONFEOF
 
   cat > /etc/systemd/system/disco-network.service << 'SVCEOF'
 [Unit]
-Description=Silent Disco - Configure wlan0 static IP
+Description=Silent Disco - Configure wlan1 static IP
 Before=hostapd.service dnsmasq.service
 After=network-pre.target NetworkManager.service
 
@@ -226,9 +226,9 @@ After=network-pre.target NetworkManager.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/bin/nmcli radio wifi on
-ExecStart=/sbin/ip link set wlan0 up
-ExecStart=/sbin/ip addr flush dev wlan0
-ExecStart=/sbin/ip addr add 192.168.4.1/24 dev wlan0
+ExecStart=/sbin/ip link set wlan1 up
+ExecStart=/sbin/ip addr flush dev wlan1
+ExecStart=/sbin/ip addr add 192.168.4.1/24 dev wlan1
 
 [Install]
 WantedBy=multi-user.target
