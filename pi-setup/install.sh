@@ -283,7 +283,7 @@ chmod +x /opt/disco/config/bt-setup.sh
 # Bluetooth setup service — runs bt-setup.sh on boot
 cat > /etc/systemd/system/disco-bt-setup.service << 'SVCEOF'
 [Unit]
-Description=Silent Disco - Disable built-in BT and configure USB dongle
+Description=Silent Disco - Bluetooth setup (built-in preferred, USB dongle fallback)
 After=bluetooth.service
 Requires=bluetooth.service
 
@@ -418,7 +418,7 @@ echo "    $MUSIC_DIR/red/"
 echo "    $MUSIC_DIR/green/"
 echo "    $MUSIC_DIR/blue/"
 echo ""
-echo "  Bluetooth:     SilentDisco (USB dongle)"
+echo "  Bluetooth:     SilentDisco (built-in, USB dongle fallback)"
 echo "  Spotify:       SilentDisco Red/Green/Blue"
 echo ""
 echo "  Reboot to activate all services:"
