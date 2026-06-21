@@ -270,11 +270,15 @@ NMCONFEOF
 [Unit]
 Description=Silent Disco - Configure ${AP_IFACE} static IP
 Before=hostapd.service dnsmasq.service
-After=network-pre.target NetworkManager.service
+After=network-pre.target NetworkManager.service sys-subsystem-net-devices-${AP_IFACE}.device
+Wants=sys-subsystem-net-devices-${AP_IFACE}.device
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Wait for the AP interface to enumerate before configuring it (USB adapters
+# appear after boot, racing this service and failing with "Cannot find device").
+ExecStartPre=/usr/bin/timeout 30 /bin/sh -c "until /sbin/ip link show ${AP_IFACE} >/dev/null 2>&1; do sleep 1; done"
 ExecStart=/usr/bin/nmcli radio wifi on
 ExecStart=/sbin/ip link set ${AP_IFACE} up
 ExecStart=/sbin/ip addr flush dev ${AP_IFACE}
