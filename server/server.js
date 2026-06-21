@@ -74,6 +74,19 @@ function getChannelConfig(id) {
   return conf.channels.find(c => c.id === id);
 }
 
+// Tracks for a channel in saved playlist order, joined with their metadata.
+async function getOrderedTracks(chConf) {
+  const tracks = await metadata.scanDirectory(chConf.music_dir);
+  const order = playlist.getOrderedFiles(chConf.music_dir);
+  return order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+}
+
+// Reject filenames that could escape the channel/library directory.
+function unsafeFilename(name) {
+  return !name || name.includes('/') || name.includes('\\') ||
+    name.includes('\0') || name === '..' || name === '.';
+}
+
 // --- GET /api/config --- public event config
 app.get('/api/config', (req, res) => {
   res.json({
@@ -181,10 +194,7 @@ app.get('/api/channels/:id/tracks', async (req, res) => {
 
   const chConf = getChannelConfig(id);
   try {
-    const tracks = await metadata.scanDirectory(chConf.music_dir);
-    // Return in playlist order
-    const order = playlist.getOrderedFiles(chConf.music_dir);
-    const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+    const ordered = await getOrderedTracks(chConf);
     res.json({ ok: true, channel: id, tracks: ordered });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -195,7 +205,7 @@ app.get('/api/channels/:id/tracks', async (req, res) => {
 app.get('/api/channels/:id/album-art/:filename', async (req, res) => {
   const { id, filename } = req.params;
   if (!validChannel(id)) return res.status(404).send('Unknown channel');
-  if (filename.includes('/') || filename.includes('\\')) return res.status(400).send('Invalid filename');
+  if (unsafeFilename(filename)) return res.status(400).send('Invalid filename');
 
   const chConf = getChannelConfig(id);
   const filePath = path.join(chConf.music_dir, filename);
@@ -459,9 +469,7 @@ app.post('/api/channels/:id/upload', requireAdmin, (req, res, next) => {
     metadata.invalidateDirectory(chConf.music_dir);
     playlist.ensureM3u(chConf.music_dir);
     await liquidsoap.reloadPlaylist(id).catch(() => {});
-    const tracks = await metadata.scanDirectory(chConf.music_dir);
-    const order = playlist.getOrderedFiles(chConf.music_dir);
-    const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+    const ordered = await getOrderedTracks(chConf);
     res.json({ ok: true, channel: id, uploaded: req.files.length, tracks: ordered });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -472,7 +480,7 @@ app.post('/api/channels/:id/upload', requireAdmin, (req, res, next) => {
 app.delete('/api/channels/:id/tracks/:filename', requireAdmin, async (req, res) => {
   const { id, filename } = req.params;
   if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
-  if (filename.includes('/') || filename.includes('\\')) {
+  if (unsafeFilename(filename)) {
     return res.status(400).json({ ok: false, error: 'Invalid filename' });
   }
 
@@ -490,9 +498,7 @@ app.delete('/api/channels/:id/tracks/:filename', requireAdmin, async (req, res) 
   metadata.invalidateFile(filePath);
   playlist.ensureM3u(chConf.music_dir);
   await liquidsoap.reloadPlaylist(id).catch(() => {});
-  const tracks = await metadata.scanDirectory(chConf.music_dir);
-  const order = playlist.getOrderedFiles(chConf.music_dir);
-  const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+  const ordered = await getOrderedTracks(chConf);
   res.json({ ok: true, channel: id, tracks: ordered });
 });
 
@@ -509,11 +515,7 @@ app.post('/api/channels/:id/tracks/move', requireAdmin, async (req, res) => {
   const chConf = getChannelConfig(id);
   playlist.moveTrack(chConf.music_dir, filename, direction);
   await liquidsoap.reloadPlaylist(id).catch(() => {});
-  const tracks = await metadata.scanDirectory(chConf.music_dir);
-
-  // Return tracks in playlist order
-  const order = playlist.getOrderedFiles(chConf.music_dir);
-  const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+  const ordered = await getOrderedTracks(chConf);
 
   res.json({ ok: true, channel: id, tracks: ordered });
 });
@@ -526,9 +528,7 @@ app.post('/api/channels/:id/tracks/shuffle', requireAdmin, async (req, res) => {
   const chConf = getChannelConfig(id);
   playlist.shuffleOrder(chConf.music_dir);
   await liquidsoap.reloadPlaylist(id).catch(() => {});
-  const tracks = await metadata.scanDirectory(chConf.music_dir);
-  const order = playlist.getOrderedFiles(chConf.music_dir);
-  const ordered = order.map(f => tracks.find(t => t.filename === f)).filter(Boolean);
+  const ordered = await getOrderedTracks(chConf);
 
   res.json({ ok: true, channel: id, tracks: ordered });
 });
@@ -747,7 +747,7 @@ app.put('/api/library/:filename/tags', requireAdmin, async (req, res) => {
 // --- GET /api/library/stream/:filename --- stream audio file for preview
 app.get('/api/library/stream/:filename', requireAdmin, (req, res) => {
   const { filename } = req.params;
-  if (filename.includes('/') || filename.includes('\\')) return res.status(400).send('Invalid filename');
+  if (unsafeFilename(filename)) return res.status(400).send('Invalid filename');
   const filePath = path.join(library.getLibraryPath(), filename);
   try {
     const stat = fs.statSync(filePath);
