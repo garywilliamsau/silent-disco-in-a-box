@@ -206,6 +206,16 @@ def make_channel(~id, ~name, ~description, ~mount, ~m3u,
 
   safe.on_metadata(fun(m) -> begin
     now_playing := m
+    # Push track metadata to the API (cheaper than the API polling us over telnet)
+    ignore(http.post(
+      "http://127.0.0.1:3000/api/channels/#{id}/liq-meta",
+      headers=[("Content-Type", "application/json")],
+      data=json.stringify({
+        artist=list.assoc(default="", "artist", m),
+        title=list.assoc(default="", "title", m),
+        filename=list.assoc(default="", "filename", m)
+      })
+    ))
   end)
 
   server.register(
