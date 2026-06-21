@@ -26,6 +26,11 @@ const CHANNELS = conf.channels.map(c => c.id);
 // Spotify track metadata per channel — set by librespot track_changed event hook
 const spotifyMeta = {};
 
+// Playlist track metadata per channel — pushed by Liquidsoap's on_metadata hook.
+// Mirrors what <id>.now_playing returns over telnet, but event-driven, so the
+// broadcast loop doesn't poll Liquidsoap for it every cycle.
+const liqMeta = {};
+
 // Event stats collector
 const eventStats = new EventStats(CHANNELS);
 
@@ -88,7 +93,7 @@ app.get('/api/channels', async (req, res) => {
     const [npResults, statsResult] = await Promise.allSettled([
       Promise.all(CHANNELS.map(async (ch) => ({
         id: ch,
-        nowPlaying: spotifyMeta[ch] || await liquidsoap.getNowPlaying(ch).catch(() => null),
+        nowPlaying: spotifyMeta[ch] || liqMeta[ch] || await liquidsoap.getNowPlaying(ch).catch(() => null),
         alsaMode: await liquidsoap.getAlsaMode(ch).catch(() => false),
         bluetoothMode: await liquidsoap.getBluetoothMode(ch).catch(() => false),
         spotifyMode: await liquidsoap.getSpotifyMode(ch).catch(() => false),
@@ -590,6 +595,16 @@ app.delete('/api/channels/:id/spotify-meta', (req, res) => {
   res.json({ ok: true });
 });
 
+// --- POST /api/channels/:id/liq-meta --- track metadata pushed by Liquidsoap on_metadata
+// (localhost only; the API binds 127.0.0.1). Replaces per-cycle telnet polling for now-playing.
+app.post('/api/channels/:id/liq-meta', (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false });
+  const { title, artist, filename } = req.body;
+  liqMeta[id] = { title: title || '', artist: artist || '', filename: filename || '' };
+  res.json({ ok: true });
+});
+
 // --- POST /api/channels/:id/bluetooth --- enable/disable BT on a channel
 app.post('/api/channels/:id/bluetooth', requireAdmin, async (req, res) => {
   const { id } = req.params;
@@ -978,7 +993,7 @@ async function broadcastNowPlaying() {
     const [channels, stats] = await Promise.all([
       Promise.all(CHANNELS.map(async (ch) => ({
         id: ch,
-        nowPlaying: await liquidsoap.getNowPlaying(ch).catch(() => null),
+        nowPlaying: liqMeta[ch] || await liquidsoap.getNowPlaying(ch).catch(() => null),
         alsaMode: await liquidsoap.getAlsaMode(ch).catch(() => false),
         bluetoothMode: await liquidsoap.getBluetoothMode(ch).catch(() => false),
         spotifyMode: await liquidsoap.getSpotifyMode(ch).catch(() => false),
