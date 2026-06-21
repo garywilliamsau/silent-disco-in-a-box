@@ -236,6 +236,10 @@ SVCEOF
   systemctl daemon-reload
   systemctl enable disco-network
 
+  # Offline-first: don't let boot wait on a connection that may never come
+  # (portable events have no internet). Spotify Connect still works when online.
+  systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
+
   # Keep WiFi hotspot up even when ethernet connects
   mkdir -p /etc/NetworkManager/dispatcher.d
   cp "$INSTALL_DIR/config/nm-dispatcher-keep-wifi-up.sh" /etc/NetworkManager/dispatcher.d/10-keep-wifi-up
