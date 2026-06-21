@@ -11,7 +11,7 @@
 #   4. Find the Pi's IP (check your router or scan with: arp -a | grep -i "d8:3a:dd\|dc:a6:32")
 #   5. Run this script
 
-PI_IP="${1:-192.168.0.215}"
+PI_IP="${1:-192.168.0.99}"
 PI_USER="${2:-silentdisco}"
 PI_PASS="${3:-raspberry}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
