@@ -185,7 +185,7 @@ ExecStartPre=/bin/bash -c '[ -p /tmp/disco-talkover.pcm ] || mkfifo /tmp/disco-t
 ExecStart=/usr/bin/docker run --rm --name liquidsoap-disco \
   --network host \
   -v /etc/liquidsoap/disco.liq:/etc/liquidsoap/disco.liq:ro \
-  -v /home/silentdisco/music:/home/silentdisco/music \
+  -v /home/pi/music:/home/pi/music \
   -v /var/log/liquidsoap:/var/log/liquidsoap \
   -v /opt/disco/config/linein-capture.sh:/opt/disco/config/linein-capture.sh:ro \
   -v /opt/disco/config/bt-capture.sh:/opt/disco/config/bt-capture.sh:ro \
@@ -204,7 +204,7 @@ WantedBy=multi-user.target
 SVCEOF
 
 # Patch music path in Docker service
-sed -i "s|/home/silentdisco/music|$MUSIC_DIR|g" /etc/systemd/system/liquidsoap-disco.service
+sed -i "s|/home/pi/music|$MUSIC_DIR|g" /etc/systemd/system/liquidsoap-disco.service
 
 echo "[9/$STEPS] Configuring network..."
 if command -v nmcli &>/dev/null; then

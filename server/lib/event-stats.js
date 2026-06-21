@@ -7,7 +7,7 @@ const config = require('./config');
 
 function getStatsDir() {
   const conf = config.get();
-  const musicRoot = conf.library?.path ? path.dirname(conf.library.path) : '/home/silentdisco/music';
+  const musicRoot = conf.library?.path ? path.dirname(conf.library.path) : '/home/pi/music';
   return path.join(musicRoot, 'stats');
 }
 

@@ -414,7 +414,7 @@ CHANNELS.forEach(ch => { trackHistory[ch] = []; });
 const MAX_TRACK_HISTORY = 200;
 
 // Persist history to disk so it survives restarts
-const HISTORY_PATH = path.join(path.dirname(conf.library?.path || '/home/silentdisco/music/library'), 'track-history.json');
+const HISTORY_PATH = path.join(path.dirname(conf.library?.path || '/home/pi/music/library'), 'track-history.json');
 let _historySaveTimer = null;
 
 function loadHistory() {

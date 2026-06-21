@@ -163,7 +163,7 @@ red_playlist = playlist(
   id="red_playlist",
   mode="normal",
   reload_mode="watch",
-  "/home/silentdisco/music/channel-red.m3u"
+  "/home/pi/music/channel-red.m3u"
 )
 red_playlist = crossfade(duration=3., red_playlist)
 
@@ -295,7 +295,7 @@ green_playlist = playlist(
   id="green_playlist",
   mode="normal",
   reload_mode="watch",
-  "/home/silentdisco/music/channel-green.m3u"
+  "/home/pi/music/channel-green.m3u"
 )
 green_playlist = crossfade(duration=3., green_playlist)
 
@@ -427,7 +427,7 @@ blue_playlist = playlist(
   id="blue_playlist",
   mode="normal",
   reload_mode="watch",
-  "/home/silentdisco/music/channel-blue.m3u"
+  "/home/pi/music/channel-blue.m3u"
 )
 blue_playlist = crossfade(duration=3., blue_playlist)
 
