@@ -220,11 +220,16 @@ NMCONFEOF
 [Unit]
 Description=Silent Disco - Configure wlan1 static IP
 Before=hostapd.service dnsmasq.service
-After=network-pre.target NetworkManager.service
+After=network-pre.target NetworkManager.service sys-subsystem-net-devices-wlan1.device
+Wants=sys-subsystem-net-devices-wlan1.device
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Wait for the USB WiFi adapter (wlan1) to enumerate before configuring it.
+# Without this, the service races the USB driver at boot and fails with
+# "Cannot find device wlan1", leaving the AP with no IP and no DHCP.
+ExecStartPre=/usr/bin/timeout 30 /bin/sh -c "until /sbin/ip link show wlan1 >/dev/null 2>&1; do sleep 1; done"
 ExecStart=/usr/bin/nmcli radio wifi on
 ExecStart=/sbin/ip link set wlan1 up
 ExecStart=/sbin/ip addr flush dev wlan1
