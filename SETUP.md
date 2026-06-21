@@ -181,8 +181,8 @@ From your development machine:
 
 ```bash
 # Copy updated files to Pi
-scp web/* pi@192.168.0.200:/var/www/disco/
-scp server/* pi@192.168.0.200:/opt/disco/server/
+scp web/* pi@192.168.0.99:/var/www/disco/
+scp server/* pi@192.168.0.99:/opt/disco/server/
 
 # On Pi: restart affected services
 sudo systemctl restart disco-api          # API changes

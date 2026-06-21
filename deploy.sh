@@ -2,7 +2,7 @@
 # Silent Disco - Deploy to Pi
 # Usage: bash deploy.sh [pi-ip] [user] [password]
 
-PI_IP="${1:-192.168.0.200}"
+PI_IP="${1:-192.168.0.99}"
 PI_USER="${2:-silentdisco}"
 PI_PASS="${3:-raspberry}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
