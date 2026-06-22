@@ -37,6 +37,9 @@ const Visualizer = {
   _lastStrobeFire: 0,           // last fallback strobe time (for min-spacing)
   _beatStrength: 0.7,           // 0-1 intensity of the last beat (scales the strobe)
   _strobeR: 255, _strobeG: 255, _strobeB: 255, // strobe colour for the current flash
+  effect: 'none',               // visualizer effect: 'none' | 'christmas'
+  _snow: [],                    // snow flakes (christmas mode)
+  _xmasBeat: 0,                 // alternates festive strobe colours
   _listenersBound: false,
   // Debug overlay — enable with ?vdebug=1
   _debug: false,
@@ -123,6 +126,72 @@ const Visualizer = {
     this._vignetteCache = []; // invalidate on resize
   },
 
+  // Toggle a global visualizer effect ('none' | 'christmas'). Idempotent.
+  setEffect(effect) {
+    effect = effect || 'none';
+    if (effect === this.effect) return;
+    this.effect = effect;
+    if (effect === 'christmas') this._initSnow();
+    else this._snow = [];
+  },
+
+  _initSnow() {
+    const dpr = window.devicePixelRatio || 1;
+    const W = this.canvas ? this.canvas.width : 0;
+    const H = this.canvas ? this.canvas.height : 0;
+    const tier = this.maxParticles === 0 ? 0 : this.maxParticles <= 20 ? 1 : 2;
+    const dots = [40, 70, 100][tier];     // fine white snow
+    const emojis = [6, 12, 18][tier];     // trees / reindeer / big flakes
+    const chars = ['🎄', '🦌', '❄️', '⭐'];
+    const arr = [];
+    for (let i = 0; i < dots; i++) arr.push(this._makeFlake(W, H, dpr, null));
+    for (let i = 0; i < emojis; i++) arr.push(this._makeFlake(W, H, dpr, chars[i % chars.length]));
+    this._snow = arr;
+  },
+
+  _makeFlake(W, H, dpr, char) {
+    const upright = (char === '🎄' || char === '🦌'); // these shouldn't tumble
+    return {
+      x: Math.random() * (W || 1),
+      y: Math.random() * (H || 1),
+      char,
+      r: (Math.random() * 2.2 + 0.8) * dpr,          // dot radius (plain snow)
+      size: (Math.random() * 16 + 26) * dpr,         // emoji font size
+      vy: (char ? Math.random() * 0.6 + 0.5 : Math.random() * 1.1 + 0.4) * dpr,
+      sway: (Math.random() * 0.6 + 0.2) * dpr,
+      phase: Math.random() * Math.PI * 2,
+      rot: upright ? 0 : Math.random() * Math.PI * 2,
+      vrot: upright ? 0 : (Math.random() - 0.5) * 0.03,
+    };
+  },
+
+  _drawSnow(ctx, W, H) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    for (const f of this._snow) {
+      f.y += f.vy;
+      f.phase += 0.02;
+      f.x += Math.sin(f.phase) * f.sway;
+      const m = f.char ? f.size : 4;
+      if (f.y > H + m) { f.y = -m; f.x = Math.random() * W; }
+      if (f.x < -m) f.x = W + m; else if (f.x > W + m) f.x = -m;
+      if (f.char) {
+        f.rot += f.vrot;
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        if (f.rot) ctx.rotate(f.rot);
+        ctx.font = `${f.size}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(f.char, 0, 0);
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  },
+
   setColor(color) {
     this.channelColor = color;
     this.r = parseInt(color.slice(1, 3), 16);
@@ -179,6 +248,7 @@ const Visualizer = {
       : DEFAULT_BEAT_DELAY_MS;
     const ctx = this.ctx;
     const canvas = this.canvas;
+    if (this.effect === 'christmas') this._initSnow(); // size snow to the live canvas
 
     const draw = () => {
       this.animationId = requestAnimationFrame(draw);
@@ -269,11 +339,18 @@ const Visualizer = {
 
         // Strobe — brightness scales with beat strength (big flash on the downbeat)
         this.strobeAlpha = 0.2 + this._beatStrength * this._beatStrength * 0.65;
-        // Colour: soft beats flash white, strong beats shift toward the accent colour.
-        const k = this._beatStrength;
-        this._strobeR = Math.round(255 - (255 - STRONG_BEAT_COLOR[0]) * k);
-        this._strobeG = Math.round(255 - (255 - STRONG_BEAT_COLOR[1]) * k);
-        this._strobeB = Math.round(255 - (255 - STRONG_BEAT_COLOR[2]) * k);
+        if (this.effect === 'christmas') {
+          // Festive lights: alternate red / green on each beat.
+          this._xmasBeat++;
+          if (this._xmasBeat % 2 === 0) { this._strobeR = 255; this._strobeG = 45; this._strobeB = 45; }
+          else { this._strobeR = 40; this._strobeG = 220; this._strobeB = 70; }
+        } else {
+          // Colour: soft beats flash white, strong beats shift toward the accent colour.
+          const k = this._beatStrength;
+          this._strobeR = Math.round(255 - (255 - STRONG_BEAT_COLOR[0]) * k);
+          this._strobeG = Math.round(255 - (255 - STRONG_BEAT_COLOR[1]) * k);
+          this._strobeB = Math.round(255 - (255 - STRONG_BEAT_COLOR[2]) * k);
+        }
 
         // Kick existing particles — capped to prevent escape at high BPM
         this.particles.forEach(p => {
@@ -331,6 +408,9 @@ const Visualizer = {
       // --- 5. Vignette (cached gradient) ---
       ctx.fillStyle = this._getVignette(ctx, cx, H, energy);
       ctx.fillRect(0, 0, W, H);
+
+      // --- Christmas: falling snow on top ---
+      if (this.effect === 'christmas') this._drawSnow(ctx, W, H);
 
       // --- Debug overlay (?vdebug=1) ---
       if (this._debug) {

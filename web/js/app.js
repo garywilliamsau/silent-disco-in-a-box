@@ -16,6 +16,7 @@ const App = {
     try {
       const configRes = await DiscoAPI.getConfig();
       this.config = configRes;
+      this.effect = configRes.effect || 'none';
       document.getElementById('eventName').textContent = configRes.event.name;
       document.getElementById('eventTagline').textContent = configRes.event.tagline;
     } catch (e) {
@@ -37,7 +38,7 @@ const App = {
     });
 
     DiscoAPI.connectWebSocket();
-    DiscoAPI.onUpdate((channels) => this.handleUpdate(channels));
+    DiscoAPI.onUpdate((channels, effect) => this.handleUpdate(channels, effect));
 
     const channelIds = this.config.channels.map(c => c.id);
     MediaSessionManager.setupActions({
@@ -128,6 +129,7 @@ const App = {
     Visualizer.setColor(ch.color);
     Visualizer.setChannel(ch.id);
     Visualizer.start();
+    Visualizer.setEffect(this.effect);
 
     // Full channel color screen — visible from across the room
     document.getElementById('playerScreen').style.backgroundColor = ch.color;
@@ -200,8 +202,14 @@ const App = {
     }
   },
 
-  handleUpdate(channels) {
+  handleUpdate(channels, effect) {
     this.channels = channels;
+
+    // Live visualizer effect toggle (admin-controlled).
+    if (effect !== undefined && effect !== this.effect) {
+      this.effect = effect;
+      Visualizer.setEffect(effect);
+    }
 
     if (document.getElementById('channelScreen').classList.contains('active')) {
       this.renderChannelCards();
