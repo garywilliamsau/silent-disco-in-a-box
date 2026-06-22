@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Join the Silent Disco</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #0b1020; color: #fff; }
+  .poster { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 22mm 18mm; display: flex; flex-direction: column; align-items: center; text-align: center; background: radial-gradient(circle at 50% 18%, #16224a, #0b1020 70%); }
+  .season { font-size: 24px; letter-spacing: 3px; color: #6dd29a; margin: 0 0 6px; font-weight: 700; }
+  h1 { font-size: 62px; line-height: 1.04; margin: 4px 0 10px; }
+  .tag { font-size: 21px; color: #b9c2da; margin: 0 0 26px; }
+  .qr { background: #fff; padding: 16px; border-radius: 16px; box-shadow: 0 8px 40px rgba(0,0,0,.4); }
+  .qr img { width: 76mm; height: 76mm; display: block; image-rendering: pixelated; }
+  .scan { font-size: 28px; font-weight: 700; margin: 24px 0 2px; }
+  .url { font-size: 42px; font-weight: 800; color: #ffd24a; margin: 2px 0 22px; letter-spacing: 1px; }
+  .dots { display: flex; gap: 16px; margin: 4px 0 28px; }
+  .dot { width: 26px; height: 26px; border-radius: 50%; }
+  .red { background: #ff1744; } .green { background: #00e676; } .blue { background: #2979ff; }
+  .fallback { font-size: 16px; color: #8b96b4; max-width: 150mm; line-height: 1.6; }
+  .fallback b { color: #cdd5ec; }
+  @media print { body { background: #fff; } .poster { background: #fff; color: #111; } .season { color: #1e8449; } .tag { color: #444; } .scan { color: #111; } .url { color: #b8860b; } .fallback { color: #555; } .fallback b { color: #111; } .qr { box-shadow: none; } }
+</style>
+</head>
+<body>
+  <div class="poster">
+    <p class="season">&#127876; CHRISTMAS IN JULY &#127876;</p>
+    <h1>JOIN THE<br>SILENT DISCO</h1>
+    <p class="tag">Put on your headphones &amp; pick a channel</p>
+    <div class="qr"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAArwAAAK8AQMAAAA3dP4AAAAABlBMVEUAAAD///+l2Z/dAAAAAnRSTlP//8i138cAAAAJcEhZcwAACxIAAAsSAdLdfvwAAAJVSURBVHic7dlRjqMwDABQbsD9b8kNWGkmYDtJO1rtVhOk5w8UE/slfxbtdn4oNjAYDAaDwWAwGAwGg8FgMBgM/jx8bH30hWnjGFZjGxgMBoPB68KZifSoDWM6bwODwWAweGm4DMm5FO/2t21gMBgMBj8MDvNLisdP9wGDwWAw+EnwNTPjXZj/NEzBYDAYDP5tOCLSshqOeNkGBoPBYPDCcBet7MfH0AYGg8Fg8NLwLErrd/V37G+awGAwGAx+AnzcXTEkCzKk2z1WwWAwGAx+CHyZrbaTYqKOn43dfcBgMBgMfgIcZtSeueHNMO06wGAwGAxeGB7MbnDuDY4LDON3PkzBYDAYDF4JPofRmM8p8Hy2dtMYDAaDweBV4aO2nhnJM7MzX+yCwWAwGPwQeLujIVdX5raahg4Gg8Fg8NLweXOdvufdtnrxLjbAYDAYDF4XPu7vv+vRumLVSXGLch8wGAwGgxeH7/wuy++i/4LbBcpuhcBgMBgMXhMuI7SVldbZlM2/l5argMFgMBi8Lnzn37HnNI7Idd234/Z3UxoMBoPB4F+Eh5l5pXm1TdLp2WAwGAwGrwsPUY4YkJDK2WAwGAwGLw6X0Zj7yxH5sG3ybo9bgcFgMBi8LnymKGZDzslEnfWCwWAwGLw+fAxdQ7rnH1e7KEeAwWAwGPwg+CuN30uvr8NI538tgsFgMBj8RPjlboZLCRgMBoPBT4DPWnbmD8iQuhE6PwcMBoPB4IXhLhq8T/SxpFuBwWAwGLwu/N8DDAaDwWAwGAwGg8FgMBgMBoM/CP8BpE7tC+sfVhoAAAAASUVORK5CYII=" alt="Silent Disco QR code"></div>
+    <p class="scan">Point your phone camera here</p>
+    <p class="url">silentdisco.local</p>
+    <div class="dots"><span class="dot red"></span><span class="dot green"></span><span class="dot blue"></span></div>
+    <p class="fallback">Scan the code, or type <b>silentdisco.local</b> into your browser.<br>
+      No luck? Connect to Wi-Fi <b>SilentDisco</b> (password <b>letsdance</b>), then open <b>192.168.4.1</b>.</p>
+  </div>
+</body>
+</html>
