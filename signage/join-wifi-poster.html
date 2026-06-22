@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Join the Silent Disco - Wi-Fi</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #0b1020; color: #fff; }
+  .poster { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 20mm 18mm; display: flex; flex-direction: column; align-items: center; text-align: center; background: radial-gradient(circle at 50% 18%, #16224a, #0b1020 70%); }
+  .season { font-size: 24px; letter-spacing: 3px; color: #6dd29a; margin: 0 0 6px; font-weight: 700; }
+  h1 { font-size: 60px; line-height: 1.04; margin: 4px 0 8px; }
+  .tag { font-size: 21px; color: #b9c2da; margin: 0 0 22px; }
+  .step { font-size: 22px; font-weight: 800; color: #ffd24a; margin: 6px 0 2px; letter-spacing: 1px; }
+  .qr { background: #fff; padding: 16px; border-radius: 16px; box-shadow: 0 8px 40px rgba(0,0,0,.4); }
+  .qr img { width: 72mm; height: 72mm; display: block; image-rendering: pixelated; }
+  .scan { font-size: 24px; font-weight: 700; margin: 18px 0 22px; }
+  .step2 { font-size: 19px; color: #cdd5ec; line-height: 1.5; margin: 4px 0 22px; max-width: 150mm; }
+  .step2 b { color: #fff; }
+  .dots { display: flex; gap: 16px; margin: 2px 0 24px; }
+  .dot { width: 24px; height: 24px; border-radius: 50%; }
+  .red { background: #ff1744; } .green { background: #00e676; } .blue { background: #2979ff; }
+  .fallback { font-size: 15px; color: #8b96b4; line-height: 1.6; }
+  .fallback b { color: #cdd5ec; }
+  @media print { body { background: #fff; } .poster { background: #fff; color: #111; } .season { color: #1e8449; } .tag { color: #444; } .step { color: #b8860b; } .scan { color: #111; } .step2 { color: #333; } .step2 b { color: #111; } .fallback { color: #555; } .fallback b { color: #111; } .qr { box-shadow: none; } }
+</style>
+</head>
+<body>
+  <div class="poster">
+    <p class="season">&#127876; CHRISTMAS IN JULY &#127876;</p>
+    <h1>JOIN THE<br>SILENT DISCO</h1>
+    <p class="tag">Put on your headphones &amp; pick a channel</p>
+    <p class="step">STEP 1 &middot; Scan to connect</p>
+    <div class="qr"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA1wAAANcAQMAAABxKzyHAAAABlBMVEUAAAD///+l2Z/dAAAAAnRSTlP//8i138cAAAAJcEhZcwAACxIAAAsSAdLdfvwAAAN7SURBVHic7dpJbtwwEAVQ3UD3v6VuoCBxUzWQ7KQRwBu/WggSh/9qWWj7uL+xDhgMBoPBYDAYDAaDwWAwGAwGg8FgsJ+JXUevP2tfZ+rn6/A5En6/tWtTFAwGg8FgMNgOu1NdT3oJjvRWeW0VBYPBYDAYDLbHxqiSZ53zSSq7MeZsG513YTAYDAaDwf4Bu3Jw2Ou1kgKDwWAwGAz2n9iIaxPOnJRbgcFgMBgMBvsAi7qy+LoVmUdt5ahvqygYDAaDwWCwHdaqiR89pigYDAaDwWCwJbapfLYkTcHn2xwYDAaDwWCwt1j+401gQZRzrZX8DymjgXINBoPBYDAYbIWV8SWOtX8qieDcSvx/ygmDwWAwGAz2ETYHvz7vRXC0cjznYjC68hoMBoPBYDDYBpvTpy5Ker423lp6PgeDwWAwGAy2w6bh5n7NP6/PMs3Euagcdaz6hsFgMBgMBpuxxmYibl2ZjczcxZUbzckwGAwGg8FgCyxvxoVRQbTdCA67rcFgMBgMBoNtsDufbY91XBt9Yia6F+dgMBgMBoPBltj1OKPy6BOzTksqXZTgJ/SAwWAwGAwG22J3dTYhmRjidiZqTcFgMBgMBoPNWBluplHlysGtgXwj7GgvUmAwGAwGg8E69nx/VclsY05bmzq7p9EHBoPBYDAYbINdE5FbeDcJZXvsTkdgMBgMBoPB9ljUdsIpbBzJ1+YGYDAYDAaDwd5h7ey4H2JsZCyO3C0dBoPBYDAY7D02bk0h8yOHRAOxURrIXcBgMBgMBoPtsKPWa+OoQ1DbWNlzCgwGg8FgMNgSy7caMaaZ3M+Yjtpb/oTBYDAYDAb7CzYTbS1vlGpzUqy1NxgMBoPBYLAZC2c+GzNMdJZrHnPaGwwGg8FgMNgGK/fz2ejiqsGlqamB0UUpGAwGg8FgsIat6qq3AtvYbSbKjcJgMBgMBoMtsXleyRtnvRWZJS66aBMTDAaDwWAw2B7Lyy3ufNZikBkN5HGo9dNFGAwGg8FgsBUWm1e+lYOPfGQrBgGDwWAwGAz2KdauvtvNv8tcde28bxgMBoPBYLAPsHuaZvLjSUhETD3zzzQwGAwGg8FgGyyqfUbm2F3/ynKtj8BgMBgMBoPtsVbZOZ9HCx6ZceO1H7+3wGAwGAwGg+2xbykYDAaDwWAwGAwGg8FgMBgMBoPBYLAfhv0CBDIWF2GAvcUAAAAASUVORK5CYII=" alt="Wi-Fi join QR code"></div>
+    <p class="scan">Point your phone camera here &rarr; tap "Join"</p>
+    <p class="step2"><span class="step">STEP 2</span><br>Open your browser and go to <b>silentdisco.local</b><br>(or <b>192.168.4.1</b>)</p>
+    <div class="dots"><span class="dot red"></span><span class="dot green"></span><span class="dot blue"></span></div>
+    <p class="fallback">Can't scan? Join Wi-Fi <b>SilentDisco</b> &nbsp;&middot;&nbsp; password <b>letsdance</b>, then open <b>192.168.4.1</b>.</p>
+  </div>
+</body>
+</html>
