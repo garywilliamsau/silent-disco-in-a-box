@@ -77,11 +77,15 @@ const Visualizer = {
           const arr = this._beatArrivals;
           arr.push(t);
           while (arr.length > 2 && t - arr[0] > 12000) arr.shift();
-          if (arr.length >= 5) {
-            const iv = (arr[arr.length - 1] - arr[0]) / (arr.length - 1);
-            this._beatInterval = Math.max(250, Math.min(1200, iv));
+          // Only trust the tempo once arrivals span a few seconds — a single
+          // batched cluster spans little wall-clock and would collapse it.
+          const span = arr[arr.length - 1] - arr[0];
+          if (arr.length >= 6 && span >= 3000) {
+            this._beatInterval = Math.max(250, Math.min(1200, span / (arr.length - 1)));
           }
           this._serverBeatQueue.push({ at: t + this._beatDelayMs, strength: energy[this.channelId] || 0.6 });
+          // Bound the queue even if rAF is paused (backgrounded tab).
+          if (this._serverBeatQueue.length > 6) this._serverBeatQueue.shift();
         }
       });
       this._listenersBound = true;
@@ -169,8 +173,9 @@ const Visualizer = {
     if (this.animationId) cancelAnimationFrame(this.animationId); // avoid stacking draw loops on re-init
     const params = (typeof location !== 'undefined') ? new URLSearchParams(location.search) : new URLSearchParams();
     this._debug = params.has('vdebug');
-    this._beatDelayMs = params.has('beatdelay')
-      ? Math.max(0, parseInt(params.get('beatdelay'), 10) || 0)
+    const bd = parseInt(params.get('beatdelay'), 10);
+    this._beatDelayMs = (params.has('beatdelay') && Number.isFinite(bd) && bd >= 0)
+      ? bd
       : DEFAULT_BEAT_DELAY_MS;
     const ctx = this.ctx;
     const canvas = this.canvas;
@@ -242,12 +247,10 @@ const Visualizer = {
           // fire from the queue no faster than ~the tempo. This re-spaces a
           // cluster into an even strobe while leaving on-time beats untouched
           // (their gap already exceeds minGap). _beatDelayMs aligned them to audio.
+          // Fire from the queue no faster than ~the tempo, re-spacing a cluster
+          // into an even strobe. The queue is bounded on push, so no stale-drop
+          // is needed here (which could otherwise discard real beats mid-spread).
           const minGap = this._beatInterval * 0.8;
-          // Drop stale backlog so a burst-pause doesn't trigger a long catch-up.
-          const cutoff = nowMs - this._beatInterval * 1.5;
-          while (this._serverBeatQueue.length > 1 && this._serverBeatQueue[0].at < cutoff) {
-            this._serverBeatQueue.shift();
-          }
           if (this._serverBeatQueue.length &&
               this._serverBeatQueue[0].at <= nowMs &&
               nowMs - this._lastStrobeFire >= minGap) {
