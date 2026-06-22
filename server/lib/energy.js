@@ -10,6 +10,7 @@ const SAMPLE_RATE = 22050;
 const _w0 = (2 * Math.PI * 200) / SAMPLE_RATE;
 const ALPHA = _w0 / (_w0 + 1); // ~0.054
 const WINDOW_SAMPLES = 1024;  // fixed analysis window (~46ms at 22050Hz) — gives stable timing regardless of ffmpeg chunking
+const WINDOW_MS = (WINDOW_SAMPLES / SAMPLE_RATE) * 1000; // audio-time per window (~46.4ms) for beat cooldown
 const WINDOW_SIZE = 43;       // rolling-mean history length: 43 windows ≈ 2 seconds
 const BEAT_THRESHOLD = 1.8;   // bass RMS must exceed mean × this to fire beat
 const BEAT_COOLDOWN_MS = 250; // minimum ms between beats (max 240BPM)
@@ -26,6 +27,7 @@ class EnergyAnalyser {
     this._bassHistory = {};   // rolling window of bass RMS values
     this._lastBeat = {};      // timestamp of last beat per channel
     this._pcmBuffer = {};     // leftover PCM bytes that didn't fill a window
+    this._audioMs = {};       // per-channel audio-time cursor (ms) for beat cooldown
 
     this._stopped = false;
 
@@ -36,6 +38,7 @@ class EnergyAnalyser {
       this._bassHistory[ch] = [];
       this._lastBeat[ch] = 0;
       this._pcmBuffer[ch] = Buffer.alloc(0);
+      this._audioMs[ch] = 0;
     });
   }
 
@@ -57,6 +60,7 @@ class EnergyAnalyser {
     this._bassHistory[ch] = [];
     this._lastBeat[ch] = 0;
     this._pcmBuffer[ch] = Buffer.alloc(0);
+    this._audioMs[ch] = 0;
 
     const proc = spawn('ffmpeg', [
       '-fflags', 'nobuffer',
@@ -83,6 +87,7 @@ class EnergyAnalyser {
       const WINDOW_BYTES = WINDOW_SAMPLES * 2; // s16le = 2 bytes/sample
       let offset = 0;
       let lpPrev = this._lpState[ch];
+      let audioMs = this._audioMs[ch];
 
       while (data.length - offset >= WINDOW_BYTES) {
         let sumFull = 0;
@@ -103,21 +108,22 @@ class EnergyAnalyser {
         if (hist.length > WINDOW_SIZE) hist.shift();
         const mean = hist.reduce((a, b) => a + b, 0) / hist.length;
 
-        const now = Date.now();
+        audioMs += WINDOW_MS; // advance audio-time clock (independent of wall clock / chunking)
         if (
           hist.length >= 10 &&                  // need some history first
           bassRms > MIN_BASS_ABSOLUTE &&        // above the noise floor
           bassRms > mean * BEAT_THRESHOLD &&
-          now - this._lastBeat[ch] > BEAT_COOLDOWN_MS
+          audioMs - this._lastBeat[ch] > BEAT_COOLDOWN_MS
         ) {
           this.beats[ch] = true;
-          this._lastBeat[ch] = now;
+          this._lastBeat[ch] = audioMs;
         }
 
         offset += WINDOW_BYTES;
       }
 
       this._lpState[ch] = lpPrev;
+      this._audioMs[ch] = audioMs;
       this._pcmBuffer[ch] = offset < data.length ? data.subarray(offset) : Buffer.alloc(0);
     });
 
