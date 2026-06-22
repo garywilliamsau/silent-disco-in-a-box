@@ -1223,9 +1223,29 @@ const Admin = {
     this.fetchSystemStats();
     this.loadBluetoothStatus();
     this.setupLibraryUpload();
+    this.setupFanToggle();
     setInterval(() => this.fetchAndUpdate(), 3000);
     setInterval(() => this.fetchSystemStats(), 5000);
     setInterval(() => this.loadBluetoothStatus(), 10000);
+  },
+
+  setupFanToggle() {
+    const fanEl = document.getElementById('piFan');
+    if (!fanEl) return;
+    fanEl.addEventListener('click', async () => {
+      const next = { auto: 'on', on: 'off', off: 'auto' }[this.fanMode] || 'on';
+      fanEl.textContent = 'Fan: …';
+      try {
+        const res = await fetch('/api/admin/fan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+          body: JSON.stringify({ mode: next }),
+        });
+        const data = await res.json();
+        if (data.ok) this.fanMode = data.mode;
+      } catch { /* next poll will refresh */ }
+      this.fetchSystemStats();
+    });
   },
 
   async fetchSystemStats() {
@@ -1243,7 +1263,14 @@ const Admin = {
         const fanEl = document.getElementById('piFan');
         if (data.fanRpm !== null && data.fanRpm !== undefined) {
           fanEl.style.display = '';
-          fanEl.textContent = data.fanRpm > 0 ? `Fan ${data.fanRpm} RPM` : 'Fan off';
+          this.fanMode = data.fanMode;
+          const rpm = data.fanRpm > 0 ? `${data.fanRpm} RPM` : 'off';
+          fanEl.textContent =
+            data.fanMode === 'on' ? `Fan: On (${rpm})` :
+            data.fanMode === 'off' ? 'Fan: Off' :
+            `Fan: Auto (${rpm})`;
+          fanEl.classList.add('clickable');
+          fanEl.title = 'Click to cycle: Auto → On → Off';
         } else {
           fanEl.style.display = 'none';
         }
