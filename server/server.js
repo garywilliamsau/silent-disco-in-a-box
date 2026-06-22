@@ -296,6 +296,73 @@ app.get('/api/channels/:id/color.png', (req, res) => {
   res.send(png);
 });
 
+// --- Fan control (Pi 5 pwm-fan) ---
+// The kernel thermal governor (step_wise) drives the fan via the cooling
+// device, and this kernel exposes no 'user_space' policy, so a manual PWM
+// write just gets overridden on the next poll. Instead we disable the
+// cpu-thermal zone's governor (mode=disabled) and write the cooling device's
+// cur_state directly; mode=enabled hands control back to the kernel. Zone and
+// device are found by type so this survives sysfs renumbering.
+function cpuThermalZone() {
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync("grep -lx cpu-thermal /sys/class/thermal/thermal_zone*/type 2>/dev/null", { encoding: 'utf8' }).trim();
+    if (out) return path.dirname(out.split('\n')[0]);
+  } catch { /* fall through to default */ }
+  return '/sys/class/thermal/thermal_zone0';
+}
+
+function fanCoolingDevice() {
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync("grep -lx pwm-fan /sys/class/thermal/cooling_device*/type 2>/dev/null", { encoding: 'utf8' }).trim();
+    if (out) return path.dirname(out.split('\n')[0]);
+  } catch { /* fall through to default */ }
+  return '/sys/class/thermal/cooling_device0';
+}
+
+function fanHwmonDir() {
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync('ls -d /sys/devices/platform/cooling_fan/hwmon/hwmon* 2>/dev/null', { encoding: 'utf8' }).trim();
+    return out ? out.split('\n')[0] : null;
+  } catch { return null; }
+}
+
+function getFanState() {
+  let rpm = null;
+  const hw = fanHwmonDir();
+  if (hw) { try { rpm = parseInt(fs.readFileSync(path.join(hw, 'fan1_input'), 'utf8').trim(), 10); } catch { /* no tach */ } }
+  let mode = null;
+  try {
+    const zmode = fs.readFileSync(path.join(cpuThermalZone(), 'mode'), 'utf8').trim();
+    if (zmode === 'enabled') {
+      mode = 'auto';
+    } else {
+      const cur = parseInt(fs.readFileSync(path.join(fanCoolingDevice(), 'cur_state'), 'utf8').trim(), 10);
+      mode = cur > 0 ? 'on' : 'off';
+    }
+  } catch { /* mode unknown */ }
+  return { rpm, mode };
+}
+
+function setFanMode(mode) {
+  const { execSync } = require('child_process');
+  const modeFile = path.join(cpuThermalZone(), 'mode');
+  const cdev = fanCoolingDevice();
+  const curFile = path.join(cdev, 'cur_state');
+  if (mode === 'auto') {
+    execSync(`echo enabled | sudo tee ${modeFile} > /dev/null`);
+  } else if (mode === 'on') {
+    const max = fs.readFileSync(path.join(cdev, 'max_state'), 'utf8').trim();
+    execSync(`echo disabled | sudo tee ${modeFile} > /dev/null && echo ${max} | sudo tee ${curFile} > /dev/null`);
+  } else if (mode === 'off') {
+    execSync(`echo disabled | sudo tee ${modeFile} > /dev/null && echo 0 | sudo tee ${curFile} > /dev/null`);
+  } else {
+    throw new Error('Invalid fan mode');
+  }
+}
+
 // --- GET /api/system --- CPU + memory + temperature
 app.get('/api/system', (req, res) => {
   const os = require('os');
@@ -311,14 +378,7 @@ app.get('/api/system', (req, res) => {
     const raw = fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8');
     tempC = Math.round(parseInt(raw, 10) / 1000);
   } catch { /* not available */ }
-  let fanRpm = null;
-  try {
-    const { execSync } = require('child_process');
-    const files = execSync('ls /sys/devices/platform/cooling_fan/hwmon/hwmon*/fan1_input 2>/dev/null', { encoding: 'utf8' }).trim();
-    if (files) {
-      fanRpm = parseInt(fs.readFileSync(files.split('\n')[0], 'utf8').trim(), 10);
-    }
-  } catch { /* no fan sensor */ }
+  const fanState = getFanState();
   let power = null;
   try {
     const { execSync } = require('child_process');
@@ -344,7 +404,7 @@ app.get('/api/system', (req, res) => {
       usbOverCurrent,
     };
   } catch { /* not available (Pi 4 etc) */ }
-  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length, temp: tempC, fanRpm, power });
+  res.json({ ok: true, cpu: cpuPct, mem: memPct, cores: cpus.length, temp: tempC, fanRpm: fanState.rpm, fanMode: fanState.mode, power });
 });
 
 // --- GET /api/stats ---
@@ -956,6 +1016,20 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ ok: false, error: err.message });
   }
   next(err);
+});
+
+// --- POST /api/admin/fan --- set fan mode: auto | on | off
+app.post('/api/admin/fan', requireAdmin, (req, res) => {
+  const { mode } = req.body;
+  if (!['auto', 'on', 'off'].includes(mode)) {
+    return res.status(400).json({ ok: false, error: 'mode must be auto|on|off' });
+  }
+  try {
+    setFanMode(mode);
+    res.json({ ok: true, ...getFanState() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // --- POST /api/admin/system/:action ---
