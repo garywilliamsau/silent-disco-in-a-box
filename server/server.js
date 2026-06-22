@@ -64,6 +64,10 @@ function requireAdmin(req, res, next) {
 
 // --- Talkover state ---
 let talkoverEnabled = true; // admin can toggle
+
+// --- Visualizer effect (global, admin-toggled) ---
+let christmasMode = false;
+function currentEffect() { return christmasMode ? 'christmas' : 'none'; }
 let talkoverFifo = null;
 
 function validChannel(id) {
@@ -92,12 +96,23 @@ app.get('/api/config', (req, res) => {
   res.json({
     ok: true,
     event: conf.event,
+    effect: currentEffect(),
     channels: conf.channels.map(c => ({
       id: c.id,
       name: c.name,
       color: c.color,
     })),
   });
+});
+
+// --- POST /api/admin/effect --- toggle the visualizer effect (e.g. christmas)
+app.post('/api/admin/effect', requireAdmin, (req, res) => {
+  const { christmas } = req.body;
+  if (typeof christmas !== 'boolean') {
+    return res.status(400).json({ ok: false, error: 'Body must be { "christmas": true|false }' });
+  }
+  christmasMode = christmas;
+  res.json({ ok: true, effect: currentEffect() });
 });
 
 // --- GET /api/channels --- all channels with now-playing + stats
@@ -1144,7 +1159,7 @@ async function broadcastNowPlaying() {
       latestNowPlaying[ch.id] = ch.nowPlaying;
     }
 
-    const msg = JSON.stringify({ type: 'update', channels: result });
+    const msg = JSON.stringify({ type: 'update', channels: result, effect: currentEffect() });
     for (const ws of wss.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg);
     }

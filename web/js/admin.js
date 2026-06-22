@@ -37,6 +37,9 @@ const Admin = {
       }
     });
 
+    document.getElementById('xmasBtn').addEventListener('click', () => this.toggleChristmas());
+    fetch('/api/config').then(r => r.json()).then(c => this._setXmasButton(c.effect === 'christmas')).catch(() => {});
+
     document.getElementById('fileInput').addEventListener('change', (e) => {
       if (this.uploadChannel && e.target.files.length > 0) {
         this.uploadFiles(this.uploadChannel, e.target.files);
@@ -1339,6 +1342,28 @@ const Admin = {
         headers: { 'Authorization': `Bearer ${this.token}` },
       });
     } catch (e) { /* Connection drops on shutdown/restart */ }
+  },
+
+  async toggleChristmas() {
+    const on = !this._christmas;
+    try {
+      const res = await fetch('/api/admin/effect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+        body: JSON.stringify({ christmas: on }),
+      });
+      const data = await res.json();
+      if (data.ok) this._setXmasButton(data.effect === 'christmas');
+    } catch (e) { /* ignore */ }
+  },
+
+  _setXmasButton(on) {
+    this._christmas = on;
+    const btn = document.getElementById('xmasBtn');
+    if (btn) {
+      btn.classList.toggle('active', on);
+      btn.textContent = on ? '🎄 Christmas: ON' : '🎄 Christmas Mode';
+    }
   },
 
   talkoverStart() {

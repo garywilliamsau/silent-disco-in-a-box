@@ -30,7 +30,7 @@ const DiscoAPI = {
     this.ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'update') {
-        this.listeners.forEach(cb => cb(data.channels));
+        this.listeners.forEach(cb => cb(data.channels, data.effect));
       } else if (data.type === 'energy') {
         this.energyListeners.forEach(cb => cb(data.energy, data.beats || {}));
       }
