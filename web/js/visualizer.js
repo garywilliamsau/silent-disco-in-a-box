@@ -16,12 +16,15 @@ const Visualizer = {
   channelId: null,
   beatFired: false,
 
-  // Client-side beat detection
+  // Client-side beat detection (falls back to server beats when the analyser
+  // reads silent — e.g. iOS, where Web Audio gives flat data for a stream).
   _lpState: 0,
   _lpAlpha: 0,
   _bassHistory: [],
   _lastBeat: 0,
   _tdBuffer: null,
+  _lastClientSignal: 0,    // last time the analyser delivered a real waveform
+  _serverBeatPending: false,
 
   // Strobe state
   strobeAlpha: 0,
@@ -48,10 +51,14 @@ const Visualizer = {
     this.strobeAlpha = 0;
     this._vignetteCache = [];
 
-    DiscoAPI.onEnergy((energy) => {
+    DiscoAPI.onEnergy((energy, beats) => {
       if (this.channelId && energy[this.channelId] !== undefined) {
         this.serverEnergy = energy[this.channelId];
-        // beats handled client-side — server flag ignored
+      }
+      // Server beat flag — used only as a fallback when the local analyser is
+      // silent (the draw loop decides which source to trust).
+      if (beats && this.channelId && beats[this.channelId]) {
+        this._serverBeatPending = true;
       }
     });
 
@@ -66,6 +73,8 @@ const Visualizer = {
     this._lpState = 0;
     this._bassHistory = [];
     this._lastBeat = 0;
+    this._lastClientSignal = 0;
+    this._serverBeatPending = false;
   },
 
   resize() {
@@ -89,6 +98,8 @@ const Visualizer = {
     this._lpState = 0;
     this._bassHistory = [];
     this._lastBeat = 0;
+    this._lastClientSignal = 0;
+    this._serverBeatPending = false;
   },
 
   _spawnParticle(W, H) {
@@ -134,34 +145,58 @@ const Visualizer = {
       this.smoothEnergy += (this.serverEnergy - this.smoothEnergy) * 0.25;
       const energy = this.smoothEnergy;
 
-      // --- Client-side beat detection ---
+      // --- Beat detection: client-side from the audio actually playing, with a
+      // server fallback when the analyser reads silent (notably iOS, where Web
+      // Audio gives flat data for a streaming <audio>). ---
       {
+        const nowMs = performance.now();
         const analyser = AudioManager.getAnalyser();
+        let clientBeat = false;
+
         if (analyser && this._tdBuffer) {
           analyser.getByteTimeDomainData(this._tdBuffer);
           let lp = this._lpState;
           let sumBass = 0;
+          let maxDev = 0;
           const len = this._tdBuffer.length;
           for (let i = 0; i < len; i++) {
-            const s = (this._tdBuffer[i] - 128) / 128;
+            const raw = this._tdBuffer[i] - 128;
+            const dev = raw < 0 ? -raw : raw;
+            if (dev > maxDev) maxDev = dev;
+            const s = raw / 128;
             lp = this._lpAlpha * s + (1 - this._lpAlpha) * lp;
             sumBass += lp * lp;
           }
           this._lpState = lp;
-          const bassRms = Math.sqrt(sumBass / len);
+          // Any real waveform means the analyser is delivering audio to us.
+          if (maxDev > 1) this._lastClientSignal = nowMs;
 
+          const bassRms = Math.sqrt(sumBass / len);
           const hist = this._bassHistory;
           hist.push(bassRms);
           if (hist.length > BEAT_HISTORY_FRAMES) hist.shift();
 
           if (hist.length >= 15 && bassRms > MIN_BASS_ABSOLUTE) {
             const mean = hist.reduce((a, b) => a + b, 0) / hist.length;
-            const now = performance.now();
-            if (bassRms > mean * BEAT_THRESHOLD && now - this._lastBeat > BEAT_COOLDOWN_MS) {
-              this.beatFired = true;
-              this._lastBeat = now;
+            if (bassRms > mean * BEAT_THRESHOLD && nowMs - this._lastBeat > BEAT_COOLDOWN_MS) {
+              clientBeat = true;
+              this._lastBeat = nowMs;
             }
           }
+        }
+
+        const analyserAlive = (nowMs - this._lastClientSignal) < 2000;
+        if (analyserAlive) {
+          // Web Audio is feeding us samples — use the buffer-aligned client beat.
+          if (clientBeat) this.beatFired = true;
+          this._serverBeatPending = false;
+        } else if (this.smoothEnergy > 0.03) {
+          // Analyser is flat but the server hears audio — use the server beat.
+          if (this._serverBeatPending) this.beatFired = true;
+          this._serverBeatPending = false;
+        } else {
+          // Genuine silence on both — no beat.
+          this._serverBeatPending = false;
         }
       }
 
@@ -257,6 +292,8 @@ const Visualizer = {
     this._lpState = 0;
     this._bassHistory = [];
     this._lastBeat = 0;
+    this._lastClientSignal = 0;
+    this._serverBeatPending = false;
     this._tdBuffer = null;
   },
 

@@ -9,9 +9,11 @@ const SAMPLE_RATE = 22050;
 // First-order IIR low-pass: w0 = 2*pi*fc/fs, alpha = w0/(w0+1), fc=200Hz isolates kick/bass
 const _w0 = (2 * Math.PI * 200) / SAMPLE_RATE;
 const ALPHA = _w0 / (_w0 + 1); // ~0.054
-const WINDOW_SIZE = 43;       // ~2 seconds of history for rolling mean
+const WINDOW_SAMPLES = 1024;  // fixed analysis window (~46ms at 22050Hz) — gives stable timing regardless of ffmpeg chunking
+const WINDOW_SIZE = 43;       // rolling-mean history length: 43 windows ≈ 2 seconds
 const BEAT_THRESHOLD = 1.8;   // bass RMS must exceed mean × this to fire beat
 const BEAT_COOLDOWN_MS = 250; // minimum ms between beats (max 240BPM)
+const MIN_BASS_ABSOLUTE = 0.006; // gate out silence/noise floor so quiet passages don't false-fire
 
 class EnergyAnalyser {
   constructor(channels, onEnergy) {
@@ -23,6 +25,7 @@ class EnergyAnalyser {
     this._lpState = {};       // IIR filter state per channel
     this._bassHistory = {};   // rolling window of bass RMS values
     this._lastBeat = {};      // timestamp of last beat per channel
+    this._pcmBuffer = {};     // leftover PCM bytes that didn't fill a window
 
     this._stopped = false;
 
@@ -32,6 +35,7 @@ class EnergyAnalyser {
       this._lpState[ch] = 0;
       this._bassHistory[ch] = [];
       this._lastBeat[ch] = 0;
+      this._pcmBuffer[ch] = Buffer.alloc(0);
     });
   }
 
@@ -52,6 +56,7 @@ class EnergyAnalyser {
     this._lpState[ch] = 0;
     this._bassHistory[ch] = [];
     this._lastBeat[ch] = 0;
+    this._pcmBuffer[ch] = Buffer.alloc(0);
 
     const proc = spawn('ffmpeg', [
       '-fflags', 'nobuffer',
@@ -69,48 +74,51 @@ class EnergyAnalyser {
     this.processes[ch] = proc;
 
     proc.stdout.on('data', (buf) => {
-      const len = buf.length & ~1; // round down to even (s16le = 2 bytes/sample)
-      const samples = len / 2;
-      if (samples === 0) return;
-
-      let sumFull = 0;
-      let sumBass = 0;
+      // Accumulate PCM and analyse in fixed WINDOW_SAMPLES windows, so the
+      // rolling history (WINDOW_SIZE windows) is a stable ~2s regardless of how
+      // ffmpeg chunks its stdout. Leftover bytes carry to the next chunk.
+      const data = this._pcmBuffer[ch].length
+        ? Buffer.concat([this._pcmBuffer[ch], buf])
+        : buf;
+      const WINDOW_BYTES = WINDOW_SAMPLES * 2; // s16le = 2 bytes/sample
+      let offset = 0;
       let lpPrev = this._lpState[ch];
 
-      for (let i = 0; i < len; i += 2) {
-        const s = buf.readInt16LE(i) / 32768;
-        // Full-range energy
-        sumFull += s * s;
-        // IIR low-pass filter (bass isolation)
-        lpPrev = ALPHA * s + (1 - ALPHA) * lpPrev;
-        sumBass += lpPrev * lpPrev;
+      while (data.length - offset >= WINDOW_BYTES) {
+        let sumFull = 0;
+        let sumBass = 0;
+        for (let i = 0; i < WINDOW_BYTES; i += 2) {
+          const s = data.readInt16LE(offset + i) / 32768;
+          sumFull += s * s;                              // full-range energy
+          lpPrev = ALPHA * s + (1 - ALPHA) * lpPrev;     // IIR low-pass (bass isolation)
+          sumBass += lpPrev * lpPrev;
+        }
+
+        const rms = Math.sqrt(sumFull / WINDOW_SAMPLES);
+        this.energy[ch] = Math.min(1, rms * 4);
+
+        const bassRms = Math.sqrt(sumBass / WINDOW_SAMPLES);
+        const hist = this._bassHistory[ch];
+        hist.push(bassRms);
+        if (hist.length > WINDOW_SIZE) hist.shift();
+        const mean = hist.reduce((a, b) => a + b, 0) / hist.length;
+
+        const now = Date.now();
+        if (
+          hist.length >= 10 &&                  // need some history first
+          bassRms > MIN_BASS_ABSOLUTE &&        // above the noise floor
+          bassRms > mean * BEAT_THRESHOLD &&
+          now - this._lastBeat[ch] > BEAT_COOLDOWN_MS
+        ) {
+          this.beats[ch] = true;
+          this._lastBeat[ch] = now;
+        }
+
+        offset += WINDOW_BYTES;
       }
 
       this._lpState[ch] = lpPrev;
-
-      const rms = Math.sqrt(sumFull / samples);
-      this.energy[ch] = Math.min(1, rms * 4);
-
-      const bassRms = Math.sqrt(sumBass / samples);
-
-      // Update rolling history
-      const hist = this._bassHistory[ch];
-      hist.push(bassRms);
-      if (hist.length > WINDOW_SIZE) hist.shift();
-
-      // Compute rolling mean
-      const mean = hist.reduce((a, b) => a + b, 0) / hist.length;
-
-      // Beat detection
-      const now = Date.now();
-      if (
-        hist.length >= 10 &&                          // need some history first
-        bassRms > mean * BEAT_THRESHOLD &&
-        now - this._lastBeat[ch] > BEAT_COOLDOWN_MS
-      ) {
-        this.beats[ch] = true;
-        this._lastBeat[ch] = now;
-      }
+      this._pcmBuffer[ch] = offset < data.length ? data.subarray(offset) : Buffer.alloc(0);
     });
 
     proc.on('close', () => {
