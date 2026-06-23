@@ -37,6 +37,12 @@ const Admin = {
       }
     });
 
+    document.getElementById('restartAudioBtn').addEventListener('click', () => {
+      if (confirm('Restart the audio engine (Liquidsoap)? All 3 channels go silent for ~90s while they reconnect. Use this if a channel has stopped playing.')) {
+        this.restartLiquidsoap();
+      }
+    });
+
     document.getElementById('xmasBtn').addEventListener('click', () => this.toggleChristmas());
     fetch('/api/config').then(r => r.json()).then(c => this._setXmasButton(c.effect === 'christmas')).catch(() => {});
 
@@ -1342,6 +1348,28 @@ const Admin = {
         headers: { 'Authorization': `Bearer ${this.token}` },
       });
     } catch (e) { /* Connection drops on shutdown/restart */ }
+  },
+
+  async restartLiquidsoap() {
+    const btn = document.getElementById('restartAudioBtn');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Restarting audio… (~90s)';
+    try {
+      const res = await fetch('/api/admin/system/restart-liquidsoap', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${this.token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) throw new Error(data.error || 'Request failed');
+    } catch (e) {
+      alert('Failed to restart audio engine: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = orig;
+      return;
+    }
+    // Liquidsoap takes ~90s to boot and reconnect to Icecast; re-enable after that.
+    setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 95000);
   },
 
   async toggleChristmas() {

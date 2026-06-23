@@ -1058,6 +1058,13 @@ app.post('/api/admin/system/:action', requireAdmin, (req, res) => {
   } else if (action === 'shutdown') {
     res.json({ ok: true, message: 'Shutting down...' });
     setTimeout(() => exec('sudo shutdown -h now'), 1000);
+  } else if (action === 'restart-liquidsoap') {
+    // Reconnect the audio engine to Icecast (fixes a stalled Liquidsoap clock).
+    // The API survives this, so kick it off and report back immediately.
+    exec('sudo systemctl restart liquidsoap-disco', (err, stdout, stderr) => {
+      if (err) console.error('[system] liquidsoap restart failed:', stderr || err.message);
+    });
+    res.json({ ok: true, message: 'Restarting audio engine (~90s)...' });
   } else {
     res.status(400).json({ ok: false, error: 'Unknown action' });
   }
