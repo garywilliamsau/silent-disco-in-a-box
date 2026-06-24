@@ -629,6 +629,20 @@ app.post('/api/channels/:id/previous', requireAdmin, async (req, res) => {
   }
 });
 
+// --- POST /api/channels/:id/play-from --- jump to a track, continue the playlist from there
+app.post('/api/channels/:id/play-from', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!validChannel(id)) return res.status(404).json({ ok: false, error: 'Unknown channel' });
+  const { filename } = req.body;
+  if (!filename) return res.status(400).json({ ok: false, error: 'filename is required' });
+  try {
+    const result = await channelPlaylists.playFromTrack(id, filename);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
 // --- GET /api/bluetooth/status --- connected BT devices + channel assignments
 app.get('/api/bluetooth/status', requireAdmin, (req, res) => {
   const status = bluetooth.autoAssign(CHANNELS);
@@ -903,12 +917,15 @@ app.get('/api/playlists/:id', requireAdmin, async (req, res) => {
 
 // --- PUT /api/playlists/:id --- update playlist (name and/or tracks)
 app.put('/api/playlists/:id', requireAdmin, async (req, res) => {
-  const { name, tracks } = req.body;
+  const { name, tracks, applyLive } = req.body;
   try {
     const pl = await playlistManager.updatePlaylist(req.params.id, { name, tracks });
     if (!pl) return res.status(404).json({ ok: false, error: 'Playlist not found' });
-    // Refresh M3Us for channels using this playlist
-    await channelPlaylists.refreshAllM3Us().catch(() => {});
+    // Refresh M3Us for channels using this playlist, unless the caller opted out
+    // (the builder autosaves without touching live audio, applying explicitly instead).
+    if (applyLive !== false) {
+      await channelPlaylists.refreshAllM3Us().catch(() => {});
+    }
     res.json({ ok: true, playlist: pl });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

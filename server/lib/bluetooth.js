@@ -9,42 +9,58 @@ const assignments = new Map();
 // Auto-assign order: Blue first, then Green, then Red
 const ASSIGN_ORDER = ['blue', 'green', 'red'];
 
-function getConnectedDevices() {
+const ANSI = /\x1b\[[0-9;]*m/g;
+
+// List all Bluetooth controllers (the Pi often has two: the built-in UART
+// adapter and a USB dongle). A device may be connected to a non-default one.
+function listControllers() {
   try {
-    const output = execSync('bluetoothctl devices Connected 2>/dev/null', {
-      encoding: 'utf8',
-      timeout: 3000,
-    });
-    const devices = [];
-    for (const line of output.trim().split('\n')) {
-      const match = line.match(/^Device\s+([0-9A-F:]+)\s+(.+)$/i);
-      if (match) {
-        devices.push({ mac: match[1], name: match[2] });
-      }
-    }
-    return devices;
+    const out = execSync('bluetoothctl list 2>/dev/null', { encoding: 'utf8', timeout: 3000 });
+    return [...out.replace(ANSI, '').matchAll(/^Controller\s+([0-9A-F:]+)/gim)].map(m => m[1]);
   } catch {
     return [];
   }
 }
 
-function getPairedDevices() {
+// Query "devices <filter>" across every controller, deduped by MAC. Without this
+// we'd only see devices on bluetoothctl's default controller — so a phone paired
+// to the USB dongle stays invisible while the built-in adapter is the default.
+function queryDevices(filter) {
+  const parse = (out, devices, seen) => {
+    for (const line of out.replace(ANSI, '').split('\n')) {
+      const m = line.match(/Device\s+([0-9A-F:]{17})\s+(.+?)\s*$/i);
+      if (m && !seen.has(m[1])) { seen.add(m[1]); devices.push({ mac: m[1], name: m[2] }); }
+    }
+  };
+
+  const devices = [];
+  const seen = new Set();
+  const controllers = listControllers();
+
   try {
-    const output = execSync('bluetoothctl devices Paired 2>/dev/null', {
-      encoding: 'utf8',
-      timeout: 3000,
-    });
-    const devices = [];
-    for (const line of output.trim().split('\n')) {
-      const match = line.match(/^Device\s+([0-9A-F:]+)\s+(.+)$/i);
-      if (match) {
-        devices.push({ mac: match[1], name: match[2] });
+    if (controllers.length <= 1) {
+      parse(execSync(`bluetoothctl devices ${filter} 2>/dev/null`, { encoding: 'utf8', timeout: 3000 }), devices, seen);
+    } else {
+      for (const ctrl of controllers) {
+        try {
+          const out = execSync(`printf 'select %s\\ndevices %s\\n' '${ctrl}' '${filter}' | bluetoothctl 2>/dev/null`,
+            { encoding: 'utf8', timeout: 4000 });
+          parse(out, devices, seen);
+        } catch { /* skip a flaky controller */ }
       }
     }
-    return devices;
   } catch {
     return [];
   }
+  return devices;
+}
+
+function getConnectedDevices() {
+  return queryDevices('Connected');
+}
+
+function getPairedDevices() {
+  return queryDevices('Paired');
 }
 
 function getNextFreeChannel(channels) {

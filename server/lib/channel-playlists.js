@@ -5,6 +5,7 @@ const fsSync = require('fs');
 const path = require('path');
 const playlistManager = require('./playlist-manager');
 const liquidsoap = require('./liquidsoap');
+const library = require('./library');
 const config = require('./config');
 
 const DEFAULT_CHANNELS = ['red', 'green', 'blue'];
@@ -114,6 +115,50 @@ async function refreshChannelM3U(channelId) {
   }
 }
 
+// Jump the live channel to a specific track and continue down the playlist from
+// there. The clicked track plays immediately via the request queue; the watched
+// playlist is rotated to resume at the NEXT track (then wraps around). The saved
+// playlist JSON is left untouched — this only affects the live play cursor.
+async function playFromTrack(channelId, filename) {
+  const assignments = await getAssignments();
+  const playlistId = assignments[channelId];
+  if (!playlistId) throw new Error('No playlist assigned to this channel');
+
+  const pl = await playlistManager.getPlaylist(playlistId);
+  if (!pl) throw new Error('Assigned playlist not found');
+
+  const order = pl.tracks.map(t => t.filename);
+  const idx = order.indexOf(filename);
+  if (idx === -1) throw new Error('Track is not in this channel\'s playlist');
+
+  const libraryDir = library.getLibraryPath();
+
+  // Playlist resumes at the track after the clicked one, then wraps to the start.
+  const rotated = order.slice(idx + 1).concat(order.slice(0, idx + 1));
+  const m3uPath = getChannelM3UPath(channelId);
+  fsSync.mkdirSync(path.dirname(m3uPath), { recursive: true });
+  await fs.writeFile(m3uPath, rotated.map(f => path.join(libraryDir, f)).join('\n') + '\n');
+
+  // Reload the watched playlist (picks up the rotated order for when the queue empties)...
+  try {
+    await liquidsoap.reloadPlaylist(channelId);
+  } catch (err) {
+    console.error(`[channel-playlists] reload failed for ${channelId}:`, err.message);
+  }
+  // ...clear any backlog from previous clicks (otherwise the new track queues
+  // behind them and only plays minutes later)...
+  try {
+    await liquidsoap.flushQueue(channelId);
+  } catch (err) {
+    console.error(`[channel-playlists] queue flush failed for ${channelId}:`, err.message);
+  }
+  await new Promise(r => setTimeout(r, 250));
+  // ...then push the clicked track to the now-empty queue so it plays right now.
+  await liquidsoap.pushTrack(channelId, path.join(libraryDir, filename));
+
+  return { channel: channelId, playing: filename, resumesAt: rotated[0] || null };
+}
+
 async function refreshAllM3Us() {
   const assignments = await getAssignments();
 
@@ -131,4 +176,5 @@ module.exports = {
   unassignPlaylist,
   refreshChannelM3U,
   refreshAllM3Us,
+  playFromTrack,
 };

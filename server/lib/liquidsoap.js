@@ -157,6 +157,12 @@ async function pushTrack(channel, filePath) {
   return client.send(`${channel}_queue.push ${filePath}`);
 }
 
+// Clear any backlog in the channel's request queue and skip whatever it is
+// currently playing, so the next pushed track plays immediately.
+async function flushQueue(channel) {
+  return client.send(`${channel}_queue.flush_and_skip`);
+}
+
 async function setBluetoothMode(channel, enabled) {
   return client.send(`${channel}.set_bt ${enabled ? 'true' : 'false'}`);
 }
@@ -181,6 +187,6 @@ async function setTalkoverActive(active) {
 
 module.exports = {
   client, getNowPlaying, skipChannel, setAlsaMode, getAlsaMode,
-  reloadPlaylist, pushTrack, setBluetoothMode, getBluetoothMode,
+  reloadPlaylist, pushTrack, flushQueue, setBluetoothMode, getBluetoothMode,
   setSpotifyMode, getSpotifyMode, setTalkoverActive,
 };

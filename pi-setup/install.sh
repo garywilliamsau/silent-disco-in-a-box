@@ -292,7 +292,7 @@ chmod +x /opt/disco/config/bt-setup.sh
 # Bluetooth setup service — runs bt-setup.sh on boot
 cat > /etc/systemd/system/disco-bt-setup.service << 'SVCEOF'
 [Unit]
-Description=Silent Disco - Bluetooth setup (built-in preferred, USB dongle fallback)
+Description=Silent Disco - Bluetooth setup (USB dongle preferred, built-in fallback)
 After=bluetooth.service
 Requires=bluetooth.service
 
