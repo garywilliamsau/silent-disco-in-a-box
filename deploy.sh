@@ -18,17 +18,18 @@ run_scp() {
 echo "Deploying to $PI_USER@$PI_IP..."
 
 # Ensure temp dirs exist
-run_ssh "mkdir -p /tmp/disco-js /tmp/disco-css /tmp/disco-lib"
+run_ssh "mkdir -p /tmp/disco-js/vendor /tmp/disco-css /tmp/disco-lib"
 
 # Ensure music library and playlists directories exist
 run_ssh "mkdir -p /home/$PI_USER/music/library /home/$PI_USER/music/playlists"
 
 # Web files
 echo "[1/4] Web files..."
-run_scp "$SCRIPT_DIR/web/index.html" "$SCRIPT_DIR/web/admin.html" "$PI_USER@$PI_IP:/tmp/"
+run_scp "$SCRIPT_DIR/web/index.html" "$SCRIPT_DIR/web/admin.html" "$SCRIPT_DIR/web/builder.html" "$PI_USER@$PI_IP:/tmp/"
 run_scp "$SCRIPT_DIR/web/js/"*.js "$PI_USER@$PI_IP:/tmp/disco-js/"
+run_scp "$SCRIPT_DIR/web/js/vendor/"*.js "$PI_USER@$PI_IP:/tmp/disco-js/vendor/"
 run_scp "$SCRIPT_DIR/web/css/"*.css "$PI_USER@$PI_IP:/tmp/disco-css/"
-run_ssh "sudo cp /tmp/index.html /tmp/admin.html /var/www/disco/ && sudo cp /tmp/disco-js/*.js /var/www/disco/js/ && sudo cp /tmp/disco-css/*.css /var/www/disco/css/"
+run_ssh "sudo mkdir -p /var/www/disco/js/vendor && sudo cp /tmp/index.html /tmp/admin.html /tmp/builder.html /var/www/disco/ && sudo cp /tmp/disco-js/*.js /var/www/disco/js/ && sudo cp /tmp/disco-js/vendor/*.js /var/www/disco/js/vendor/ && sudo cp /tmp/disco-css/*.css /var/www/disco/css/"
 
 # Server files
 echo "[2/4] Server files..."
@@ -44,11 +45,15 @@ run_ssh "sudo cp /tmp/nginx-disco.conf /etc/nginx/sites-available/disco && sudo 
 # Restart services
 echo "[4/4] Restarting services..."
 NEED_LIQUIDSOAP=false
+# Normalize the staged config exactly as it gets installed (music path rewrite)
+# BEFORE diffing, so a web-only deploy isn't seen as a config change and doesn't
+# trigger a needless ~90s Liquidsoap restart (audio drop).
+run_ssh "sed -i 's|/home/pi/music|/home/$PI_USER/music|g' /tmp/disco.liq"
 if run_ssh "diff -q /tmp/disco.liq /etc/liquidsoap/disco.liq" > /dev/null 2>&1; then
   echo "  Liquidsoap config unchanged, skipping restart"
 else
   NEED_LIQUIDSOAP=true
-  run_ssh "sudo cp /tmp/disco.liq /etc/liquidsoap/disco.liq && sudo sed -i 's|/home/pi/music|/home/$PI_USER/music|g' /etc/liquidsoap/disco.liq"
+  run_ssh "sudo cp /tmp/disco.liq /etc/liquidsoap/disco.liq"
 fi
 
 run_ssh "sudo nginx -t 2>&1 && sudo systemctl reload nginx && sudo systemctl restart disco-api"
@@ -60,7 +65,7 @@ if [ "$NEED_LIQUIDSOAP" = true ]; then
 fi
 
 # Cleanup
-run_ssh "rm -rf /tmp/disco-js /tmp/disco-css /tmp/disco-lib /tmp/index.html /tmp/admin.html /tmp/server.js /tmp/package.json /tmp/disco.liq /tmp/nginx-disco.conf /tmp/bt-capture.sh /tmp/bt-auto-agent.py /tmp/bt-setup.sh /tmp/linein-capture.sh /tmp/spotify-capture.sh 2>/dev/null"
+run_ssh "rm -rf /tmp/disco-js /tmp/disco-css /tmp/disco-lib /tmp/index.html /tmp/admin.html /tmp/builder.html /tmp/server.js /tmp/package.json /tmp/disco.liq /tmp/nginx-disco.conf /tmp/bt-capture.sh /tmp/bt-auto-agent.py /tmp/bt-setup.sh /tmp/linein-capture.sh /tmp/spotify-capture.sh 2>/dev/null"
 
 echo ""
 echo "Deploy complete!"

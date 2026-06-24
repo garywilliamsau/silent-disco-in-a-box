@@ -3,3 +3,8 @@ node_modules/
 **/.DS_Store
 firebase-debug.log
 .claude/
+
+# Downloaded party music + logs (not committed — too large / copyrighted)
+music-prep/downloads/
+music-prep/out/upload/
+music-prep/*.log

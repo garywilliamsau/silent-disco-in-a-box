@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Playlist Builder · Silent Disco</title>
+  <link rel="stylesheet" href="/css/builder.css?v=2">
+</head>
+<body>
+
+  <!-- Login (reuses the admin token/session) -->
+  <div id="loginScreen" class="screen active">
+    <div class="login-box">
+      <h1>Playlist Builder</h1>
+      <input type="password" id="passwordInput" placeholder="Admin password" autocomplete="off">
+      <button id="loginBtn">Login</button>
+      <div id="loginError" class="error hidden"></div>
+    </div>
+  </div>
+
+  <!-- Builder -->
+  <div id="builderScreen" class="screen">
+    <header class="builder-header">
+      <div class="header-left">
+        <h1>🎚️ Playlist Builder</h1>
+        <a class="back-link" href="/admin.html">← Admin</a>
+      </div>
+      <div class="header-right">
+        <span id="saveStatus" class="save-status"></span>
+        <button id="refreshLibBtn" class="btn btn-ghost" title="Reload the music library list">↻ Library</button>
+      </div>
+    </header>
+
+    <div class="builder-body">
+      <!-- LEFT: music library -->
+      <section class="library-pane">
+        <div class="library-toolbar">
+          <input type="search" id="librarySearch" placeholder="Search title, artist, album…" autocomplete="off">
+          <span id="libraryCount" class="muted"></span>
+        </div>
+        <div class="library-head">
+          <span class="col-art"></span>
+          <button class="col col-title sort-btn" data-sort="title">Title</button>
+          <button class="col col-artist sort-btn" data-sort="artist">Artist</button>
+          <button class="col col-album sort-btn" data-sort="album">Album</button>
+          <button class="col col-dur sort-btn" data-sort="duration">Time</button>
+          <span class="col-actions"></span>
+        </div>
+        <div id="libraryList" class="library-list">
+          <div class="empty">Loading library…</div>
+        </div>
+      </section>
+
+      <!-- RIGHT: 3 channel buckets -->
+      <section id="buckets" class="buckets-pane">
+        <!-- channel buckets injected here -->
+      </section>
+    </div>
+  </div>
+
+  <!-- hidden audio element for previews -->
+  <audio id="previewAudio" preload="none"></audio>
+
+  <script src="/js/vendor/Sortable.min.js?v=1"></script>
+  <script src="/js/builder.js?v=2"></script>
+</body>
+</html>

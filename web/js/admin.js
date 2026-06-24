@@ -128,6 +128,7 @@ const Admin = {
       const panel = document.createElement('div');
       panel.className = 'channel-panel';
       panel.id = `panel-${id}`;
+      panel.style.setProperty('--ch', this.channelColors[id]);
 
       panel.innerHTML = `
         <div class="panel-header">
@@ -962,13 +963,58 @@ const Admin = {
           <button class="track-move" onclick="Admin.moveTrack('${id}', '${this.escapeAttr(t.filename)}', 'up')" ${i === 0 ? 'disabled' : ''}>&#x25B2;</button>
           <button class="track-move" onclick="Admin.moveTrack('${id}', '${this.escapeAttr(t.filename)}', 'down')" ${i === sorted.length - 1 ? 'disabled' : ''}>&#x25BC;</button>
         </div>` : ''}
-        <div class="track-meta">
+        <button class="track-play" onclick="Admin.playFrom('${id}', '${this.escapeAttr(t.filename)}')" title="Play this track now and continue the playlist from here">&#x25B6;</button>
+        <div class="track-meta track-play-target" onclick="Admin.playFrom('${id}', '${this.escapeAttr(t.filename)}')" title="Play from here">
           <div class="track-name">${this.escapeHtml(t.title || t.filename)}</div>
           <div class="track-artist">${this.escapeHtml(t.artist || '')}</div>
         </div>
         <button class="track-delete" onclick="Admin.deleteTrack('${id}', '${this.escapeAttr(t.filename)}')" title="Delete">&#x2715;</button>
       </div>
     `;}).join('');
+  },
+
+  async playFrom(id, filename) {
+    const track = (this.trackData[id] || []).find(t => t.filename === filename);
+    const label = track ? (track.title || filename) : filename;
+    try {
+      const res = await fetch(`/api/channels/${id}/play-from`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+        body: JSON.stringify({ filename }),
+      });
+      const data = await res.json();
+      if (!data.ok) { this.toast(`Couldn't play: ${data.error || 'unknown error'}`, true); return; }
+
+      // Optimistic UI: move the now-playing highlight and update the header immediately.
+      this.nowPlayingTitle[id] = track ? (track.title || '') : '';
+      this.nowPlayingFile[id] = filename;
+      this.renderTracks(id, this.trackData[id]);
+      const npEl = document.getElementById(`np-${id}`);
+      if (npEl && track) npEl.innerHTML = `<strong>${this.escapeHtml(track.title || filename)}</strong> - ${this.escapeHtml(track.artist || '')}`;
+
+      this.toast(`▶ Playing "${label}" on ${id.charAt(0).toUpperCase() + id.slice(1)}`);
+      // Sync real state once the queue swap settles.
+      setTimeout(() => this.fetchAndUpdate(), 1500);
+    } catch (e) {
+      console.error('playFrom failed', e);
+      this.toast('Play from here failed', true);
+    }
+  },
+
+  toast(msg, isError) {
+    let el = document.getElementById('toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.className = isError ? 'toast error' : 'toast';
+    // restart the show/fade animation
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
   },
 
   async moveTrack(id, filename, direction) {
